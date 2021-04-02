@@ -2,7 +2,7 @@
 const NAME_COMMITMENTS_DESC = "DO NOT EDIT. This file contains the saved name commitments that you can use to create VerusIDs. Editing it will most likely cause your VerusID creation to fail."
 
 // Secrets
-const SECRETS_DESC = "DO NOT EDIT"
+const BUILTIN_SECRET_DESC = "DO NOT EDIT"
 
 // Currencies
 const BLACKLIST_DESC = "This file contains currencies you have chosen to blacklist, i.e. never see again. They will not appear in any part of your wallet, on the chains they are children of here."
@@ -20,5 +20,5 @@ module.exports = {
   BLACKLIST_DESC,
   WHITELIST_DESC,
   GRAYLIST_DESC,
-  SECRETS_DESC
+  BUILTIN_SECRET_DESC
 }

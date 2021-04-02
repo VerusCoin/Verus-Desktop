@@ -1,6 +1,11 @@
 // TODO: CLEANUP THIS FILE
 const express = require('express');
+const { BuiltinPlugins } = require('./api/utils/plugin/builtin.js');
 let api = express.Router();
+api.rpcCalls = {
+  GET: {},
+  POST: {}
+}
 
 api = require('./api/auth.js')(api);
 
@@ -21,6 +26,20 @@ api.guiLog = {};
 api.rpcConf = {};
 api.customKomodoNetworks = {};
 api.appRuntimeLog = [];
+
+api.plugins = api.plugins = {
+  registry: {},
+  builtin: {}
+}
+api.pluginWindows = {
+  registry: {},
+  builtin: {}
+}
+api.pluginOnCompletes = {
+  registry: {},
+  builtin: {}
+}
+
 api.lockDownAddCoin = false;
 api._isWatchOnly = false;
 
@@ -79,9 +98,19 @@ api = require('./api/config.js')(api);
 api = require('./api/users.js')(api);
 api = require('./api/init.js')(api);
 api = require('./api/utility_apis/checkUpdates')(api);
+api = require('./api/plugin/registry')(api);
+api = require('./api/plugin/install')(api);
+api = require('./api/plugin/start')(api);
+api = require('./api/plugin/stop')(api);
+api = require('./api/plugin/builtin/authenticator')(api);
+api = require('./api/focus')(api);
 
 api.createAgamaDirs();
 api.appConfig = api.loadLocalConfig();
+api.plugins = {
+  registry: api.loadLocalPluginRegistry(),
+  builtin: BuiltinPlugins
+}
 
 api.appConfigSchema = api._appConfig.schema;
 api.defaultAppConfig = Object.assign({}, api.appConfig);

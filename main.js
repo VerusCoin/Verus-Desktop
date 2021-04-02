@@ -1,11 +1,7 @@
-// main proc for Agama
-// TODO: CLEANUP THIS FILE
-
 const electron = require('electron');
 const { crashReporter } = require('electron')
 const {
 	Menu,
-	ipcMain,
 } = require('electron');
 const app = electron.app;
 const BrowserWindow = electron.BrowserWindow;
@@ -21,29 +17,21 @@ const { formatBytes } = require('agama-wallet-lib/src/utils');
 const { dialog } = require('electron')
 
 global.USB_HOME_DIR = path.resolve(__dirname, './usb_home')
-
-// TODO: Implement in a way less likely to confuse people
-// USB Mode sets all necesarry files/folders to be in app parent directory
-global.USB_MODE = false
 global.HOME = os.platform() === "win32" ? process.env.APPDATA : process.env.HOME;
 
 // GUI APP settings and starting gui on address http://120.0.0.1:17777
 let api = require('./routes/api');
 api.clearWriteLog()
-const { appSecretToken, apiShieldKey } = require('./routes/preloads/keys');
+const { MasterSecret, BuiltinSecret } = require('./routes/preloads/keys');
 
 const guiapp = express();
 
 //TODO: add more things here
 const { appConfig } = api
 
-ipcMain.on('appConfig', (event) => {
-	event.sender.send('appConfig', appConfig);
-});
-
 const appBasicInfo = {
 	name: 'Verus Desktop',
-	mode: global.USB_MODE ? 'usb' : 'standard',
+	mode: 'standard',
 	version: version.version,
 };
 
@@ -83,7 +71,6 @@ for (let i = 0; i < process.argv.length; i++) {
 	}
 }
 
-api.log('usb mode: ' + global.USB_MODE, 'init');
 api.log(`app info: ${appBasicInfo.name} ${appBasicInfo.version}`, 'init');
 api.log('sys info:', 'init');
 api.log(`totalmem_readable: ${formatBytes(os.totalmem())}`, 'init');
@@ -98,10 +85,15 @@ api.log(`app started in ${(appConfig.general.main.dev || process.argv.indexOf('d
 //api.setConfKMD();
 
 guiapp.use((req, res, next) => {
-	res.header('Access-Control-Allow-Origin', 'http://127.0.0.1:3000');
+	if (!appConfig.general.main.dev && !(process.argv.indexOf('devmode') > -1)) {
+		res.header('Access-Control-Allow-Origin', 'http://127.0.0.1:3000');
+	} else {
+		res.header('Access-Control-Allow-Origin', '*');
+	}
+	
 	res.header('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
 	res.header('Access-Control-Allow-Credentials', 'true');
-	res.header('Access-Control-Allow-Methods', 'PUT, GET, POST, DELETE, OPTIONS');
+	res.header('Access-Control-Allow-Methods', 'GET, POST');
 	next();
 });
 
@@ -180,16 +172,11 @@ function forceCloseApp() {
 	app.quit();
 }
 
-if (!_argv.nogui ||
-		(_argv.nogui && _argv.nogui === '1')) {
-	app.on('ready', () => createWindow('open', process.argv.indexOf('dexonly') > -1 ? true : null));
-} else {
-	server.listen(appConfig.general.main.agamaPort, async () => {
-		api.log(`guiapp and sockets.io are listening on port ${appConfig.general.main.agamaPort}`, 'init');
-	});
-	api.setIO(io); // pass sockets object to api router
-	api.setVar('appBasicInfo', appBasicInfo);
-}
+app.on('ready', () => {
+	if (!_argv.nogui) {
+		startApp().then(() => createMainWindow()).catch(e => api.log(e, 'init'))
+	} else startApp()
+});
 
 function createAppCloseWindow() {
 	// initialise window
@@ -238,226 +225,252 @@ function createAppCloseWindow() {
 	});
 }
 
-function createWindow(status) {
-	if (status === 'open') {
-		require(path.join(__dirname, 'private/mainmenu'));
+function appExit() {
+	const CloseDaemons = () => {
+		return new Promise((resolve, reject) => {
+			api.log('Closing Main Window...', 'quit');
 
-		if (closeAppAfterLoading) {
-			mainWindow = null;
-			loadingWindow = null;
-		}
+			api.quitKomodod(appConfig.general.native.cliStopTimeout);
+			api.stopNSPVDaemon('all');
 
-		const staticMenu = Menu.buildFromTemplate([ // if static
-			{ role: 'copy' },
-			{ type: 'separator' },
-			{ role: 'selectall' },
-		]);
+			const result = 'Closing daemons: done';
 
-		const editMenu = Menu.buildFromTemplate([ // if editable
-			{ role: 'undo' },
-			{ role: 'redo' },
-			{ type: 'separator' },
-			{ role: 'cut' },
-			{ role: 'copy' },
-			{ role: 'paste' },
-			{ type: 'separator' },
-			{ role: 'selectall' },
-		]);
-
-		// check if agama is already running
-		portscanner.checkPortStatus(appConfig.general.main.agamaPort, '127.0.0.1', async (error, status) => {
-			// Status is 'open' if currently in use or 'closed' if available
-			if (status === 'closed') {
-				server.listen(appConfig.general.main.agamaPort, () => {
-					api.log(`guiapp and sockets.io are listening on port ${appConfig.general.main.agamaPort}`, 'init');
-				});
-
-				// initialise window
-				mainWindow = new BrowserWindow({
-					width: closeAppAfterLoading ? 1 : 1280,
-					height: closeAppAfterLoading ? 1 : 850,
-					icon: agamaIcon,
-					show: false,
-					webPreferences: {
-						allowRunningInsecureContent: false,
-						contextIsolation: true,
-						enableRemoteModule: false,
-						nativeWindowOpen: false,
-						nodeIntegration: false,
-						nodeIntegrationInWorker: false,
-						nodeIntegrationInSubFrames: false,
-						safeDialogs: true,
-						webSecurity: true,
-						webviewTag: false,
-		
-						preload: path.resolve(__dirname, "routes", "preloads", "main", "preload.js")
-					}
-				});
-
-				api.setIO(io); // pass sockets object to api router
-				api.setVar('appBasicInfo', appBasicInfo);
-				api.setVar('appSecretToken', appSecretToken);
-				api.setVar('apiShieldKey', apiShieldKey);
-
-				api.log("saving secret files...", 'init')
-				try {
-					await api.saveSecrets({
-						appSecretToken,
-						apiShieldKey
-					})
-				} catch(e) {
-					api.log("error saving secret files!", 'init')
-					api.log(e, "init")
-				}
-				
-
-				mainWindow.loadURL(appConfig.general.main.dev || process.argv.indexOf('devmode') > -1 ? 'http://127.0.0.1:3000' : `file://${__dirname}/gui/Verus-Desktop-GUI/react/build/index.html`);
-			} else {
-				mainWindow = new BrowserWindow({
-					width: 500,
-					height: 355,
-					icon: agamaIcon,
-					show: false,
-					webPreferences: {
-						allowRunningInsecureContent: false,
-						contextIsolation: true,
-						enableRemoteModule: false,
-						nativeWindowOpen: false,
-						nodeIntegration: false,
-						nodeIntegrationInWorker: false,
-						nodeIntegrationInSubFrames: false,
-						safeDialogs: true,
-						webSecurity: true,
-						webviewTag: false,
-						sandbox: true,
-					}
-				});
-
-				mainWindow.setResizable(false);
-				mainWindow.forceCloseApp = forceCloseApp;
-
-				willQuitApp = true;
-				server.listen(appConfig.general.main.agamaPort + 1, () => {
-					api.log(`guiapp and sockets.io are listening on port ${appConfig.general.main.agamaPort + 1}`, 'init');
-				});
-				mainWindow.loadURL(appConfig.general.main.dev || process.argv.indexOf('devmode') > -1 ? `http://127.0.0.1:${appConfig.general.main.agamaPort + 1}/gui/startup/agama-instance-error.html` : `file://${__dirname}/gui/startup/agama-instance-error.html`);
-				api.log('another agama app is already running', 'init');
-			}
-
-			mainWindow.webContents.on('devtools-opened', () => {
-				dialog.showMessageBox(mainWindow, {
-					type: "warning",
-					title: "Be Careful!",
-					message: "WARNING! You are opening the developer tools menu. ONLY enter commands here if you know exactly what you are doing. If someone told you to copy+paste commands into here, you should probably ignore them, close dev tools, and stay safe.",
-					buttons: ["OK"],
-				})
-			});
-
-		  mainWindow.webContents.on('did-finish-load', () => {
-		    setTimeout(() => {
-					mainWindow.show();
-					
-					api.promptUpdate(mainWindow)
-		    }, 40);
-		  });
-
-			mainWindow.webContents.on('context-menu', (e, params) => { // context-menu returns params
-				const {
-					selectionText,
-					isEditable,
-				} = params; // params obj
-
-				if (isEditable) {
-					editMenu.popup(mainWindow);
-				} else if (
-					selectionText &&
-					selectionText.trim() !== ''
-				) {
-					staticMenu.popup(mainWindow);
-				}
-			});
-
-			function appExit() {
-				if (((api.appConfig.general.main.dev || process.argv.indexOf('devmode') > -1) && api.appConfig.general.electrum.cache) ||
-						(!api.appConfig.general.main.dev && process.argv.indexOf('devmode') === -1)) {
-					api.saveLocalSPVCache();
-				}
-
-				const CloseDaemons = () => {
-					return new Promise((resolve, reject) => {
-						api.log('Closing Main Window...', 'quit');
-
-            api.quitKomodod(appConfig.general.native.cliStopTimeout);
-            api.stopNSPVDaemon('all');
-
-						const result = 'Closing daemons: done';
-
-						api.log(result, 'quit');
-						resolve(result);
-					});
-				}
-
-				const HideMainWindow = () => {
-					return new Promise((resolve, reject) => {
-						const result = 'Hiding Main Window: done';
-
-						api.log('Exiting App...', 'quit');
-						mainWindow = null;
-						api.log(result, 'quit');
-						resolve(result);
-					});
-				}
-
-				const HideAppClosingWindow = () => {
-					return new Promise((resolve, reject) => {
-						appCloseWindow = null;
-						resolve(true);
-					});
-				}
-
-				const QuitApp = () => {
-					return new Promise((resolve, reject) => {
-						const result = 'Quiting App: done';
-
-						forceQuitApp = true
-						app.quit();
-						api.log(result, 'quit');
-						resolve(result);
-					});
-				}
-
-				const closeApp = () => {
-					CloseDaemons()
-					.then(HideMainWindow)
-					.then(HideAppClosingWindow)
-					.then(QuitApp);
-				}
-
-				let _appClosingInterval;
-
-				if (process.argv.indexOf('dexonly') > -1) {
-					api.killRogueProcess('marketmaker');
-				}
-				if (!Object.keys(api.startedDaemonRegistry).length ||
-						!appConfig.general.native.stopNativeDaemonsOnQuit) {
-					closeApp();
-				} else {
-					createAppCloseWindow();
-					api.quitKomodod(appConfig.general.native.cliStopTimeout);
-					_appClosingInterval = setInterval(() => {
-						if (!Object.keys(api.startedDaemonRegistry).length) {
-							closeApp();
-						}
-					}, 1000);
-				}
-			}
-
-			// close app
-			mainWindow.on('closed', () => {
-				appExit();
-			});
+			api.log(result, 'quit');
+			resolve(result);
 		});
 	}
+
+	const HideMainWindow = () => {
+		return new Promise((resolve, reject) => {
+			const result = 'Hiding Main Window: done';
+
+			api.log('Exiting App...', 'quit');
+			mainWindow = null;
+			api.log(result, 'quit');
+			resolve(result);
+		});
+	}
+
+	const HideAppClosingWindow = () => {
+		return new Promise((resolve, reject) => {
+			appCloseWindow = null;
+			resolve(true);
+		});
+	}
+
+	const QuitApp = () => {
+		return new Promise((resolve, reject) => {
+			const result = 'Quiting App: done';
+
+			forceQuitApp = true
+			app.quit();
+			api.log(result, 'quit');
+			resolve(result);
+		});
+	}
+
+	const closeApp = () => {
+		CloseDaemons()
+		.then(HideMainWindow)
+		.then(HideAppClosingWindow)
+		.then(QuitApp);
+	}
+
+	let _appClosingInterval;
+
+	if (!Object.keys(api.startedDaemonRegistry).length ||
+			!appConfig.general.native.stopNativeDaemonsOnQuit) {
+		closeApp();
+	} else {
+		createAppCloseWindow();
+		api.quitKomodod(appConfig.general.native.cliStopTimeout);
+		_appClosingInterval = setInterval(() => {
+			if (!Object.keys(api.startedDaemonRegistry).length) {
+				closeApp();
+			}
+		}, 1000);
+	}
+}
+
+function startApp() {
+  return new Promise((resolve, reject) => {
+    // check if agama is already running
+    portscanner.checkPortStatus(
+      appConfig.general.main.agamaPort,
+      "127.0.0.1",
+      async (error, status) => {
+        // Status is 'open' if currently in use or 'closed' if available
+        if (status === "closed") {
+          server.listen(appConfig.general.main.agamaPort, () => {
+            api.log(
+              `guiapp and sockets.io are listening on port ${appConfig.general.main.agamaPort}`,
+              "init"
+            );
+            // start sockets.io
+            io.set(
+              "origins",
+              appConfig.general.main.dev || process.argv.indexOf("devmode") > -1
+                ? "http://127.0.0.1:3000"
+                : null
+            ); // set origin
+          });
+
+          api.setIO(io); // pass sockets object to api router
+          api.setVar("appBasicInfo", appBasicInfo);
+          api.setVar("MasterSecret", MasterSecret);
+          api.setVar("BuiltinSecret", BuiltinSecret);
+
+          api.log("saving plugin builtin secret...", "init");
+          try {
+            await api.saveBuiltinSecret({
+              BuiltinSecret,
+            });
+          } catch (e) {
+            api.log("error plugin builtin secret!", "init");
+            api.log(e, "init");
+          }
+        } else {
+					openAlreadyRunningWindow();
+					reject("another api instance is already running")
+        }
+
+        if (error) reject(error);
+        resolve();
+      }
+    );
+  });
+}
+
+function openAlreadyRunningWindow() {
+	const alreadyRunningWindow = new BrowserWindow({
+		width: 500,
+		height: 355,
+		frame: false,
+		icon: agamaIcon,
+		show: false,
+		webPreferences: {
+			allowRunningInsecureContent: false,
+			contextIsolation: true,
+			enableRemoteModule: false,
+			nativeWindowOpen: false,
+			nodeIntegration: false,
+			nodeIntegrationInWorker: false,
+			nodeIntegrationInSubFrames: false,
+			safeDialogs: true,
+			webSecurity: true,
+			webviewTag: false,
+			sandbox: true,
+		}
+	});
+
+	alreadyRunningWindow.setResizable(false);
+	alreadyRunningWindow.forceCloseApp = forceCloseApp;
+
+	willQuitApp = true;
+	alreadyRunningWindow.loadURL(
+		appConfig.general.main.dev || process.argv.indexOf("devmode") > -1
+			? `http://127.0.0.1:${appConfig.general.main.agamaPort}/gui/startup/agama-instance-error.html`
+			: `file://${__dirname}/gui/startup/agama-instance-error.html`
+	);
+
+	alreadyRunningWindow.webContents.on('did-finish-load', () => {
+		alreadyRunningWindow.show()
+	});
+
+	api.log('another agama app is already running', 'init');
+}
+
+function createMainWindow() {
+	require(path.join(__dirname, 'private/mainmenu'));
+
+	if (closeAppAfterLoading) {
+		mainWindow = null;
+		loadingWindow = null;
+	}
+
+	const staticMenu = Menu.buildFromTemplate([ // if static
+		{ role: 'copy' },
+		{ type: 'separator' },
+		{ role: 'selectall' },
+	]);
+
+	const editMenu = Menu.buildFromTemplate([ // if editable
+		{ role: 'undo' },
+		{ role: 'redo' },
+		{ type: 'separator' },
+		{ role: 'cut' },
+		{ role: 'copy' },
+		{ role: 'paste' },
+		{ type: 'separator' },
+		{ role: 'selectall' },
+	]);
+
+	// initialise window
+	mainWindow = new BrowserWindow({
+		width: closeAppAfterLoading ? 1 : 1280,
+		height: closeAppAfterLoading ? 1 : 850,
+		icon: agamaIcon,
+		show: false,
+		webPreferences: {
+			allowRunningInsecureContent: false,
+			contextIsolation: true,
+			enableRemoteModule: false,
+			nativeWindowOpen: false,
+			nodeIntegration: false,
+			nodeIntegrationInWorker: false,
+			nodeIntegrationInSubFrames: false,
+			safeDialogs: true,
+			webSecurity: true,
+			webviewTag: false,
+
+			preload: path.resolve(__dirname, "routes", "preloads", "plugin", "preload-builtin.js")
+		}
+	});
+
+	mainWindow.loadURL(appConfig.general.main.dev || process.argv.indexOf('devmode') > -1 ? 'http://127.0.0.1:3000' : `file://${__dirname}/gui/Verus-Desktop-GUI/react/build/index.html`);
+
+	mainWindow.webContents.on('devtools-opened', () => {
+		dialog.showMessageBox(mainWindow, {
+			type: "warning",
+			title: "Be Careful!",
+			message: "WARNING! You are opening the developer tools menu. ONLY enter commands here if you know exactly what you are doing. If someone told you to copy+paste commands into here, you should probably ignore them, close dev tools, and stay safe.",
+			buttons: ["OK"],
+		})
+	});
+
+	mainWindow.webContents.on('did-finish-load', () => {
+		setTimeout(() => {
+			mainWindow.show();
+			
+			api.promptUpdate(mainWindow)
+		}, 40);
+	});
+
+	mainWindow.webContents.on('context-menu', (e, params) => { // context-menu returns params
+		const {
+			selectionText,
+			isEditable,
+		} = params; // params obj
+
+		if (isEditable) {
+			editMenu.popup(mainWindow);
+		} else if (
+			selectionText &&
+			selectionText.trim() !== ''
+		) {
+			staticMenu.popup(mainWindow);
+		}
+	});
+
+	// close app
+	mainWindow.on('close', (event) => {
+		if (_argv.nogui && mainWindow.isVisible()) {
+			event.preventDefault()
+			mainWindow.hide()
+		}
+	});
+
+	return mainWindow
 }
 
 app.on('web-contents-created', (event, contents) => {
@@ -471,10 +484,18 @@ app.on('web-contents-created', (event, contents) => {
 
     event.preventDefault()
 	})
+
+	contents.on('will-navigate', (event, url) => {
+		console.log(`[will-navigate] ${url}`);
+		console.log(event);
+		event.preventDefault();
+	});
 	
-	contents.on('will-navigate', (event, navigationUrl) => {
-		event.preventDefault()
-	})
+	contents.on('will-redirect', (event, url) => {
+		console.log(`[will-redirect] ${url}`);
+		console.log(event);
+		event.preventDefault();
+	});
 	
 	contents.on('new-window', async (event, navigationUrl) => {
     // In this example, we'll ask the operating system
@@ -483,30 +504,24 @@ app.on('web-contents-created', (event, contents) => {
   })
 })
 
-// Emitted before the application starts closing its windows.
-// Calling event.preventDefault() will prevent the default behaviour, which is terminating the application.
-app.on('before-quit', (event) => {
-	api.log('before-quit', 'quit');
-	if (process.argv.indexOf('dexonly') > -1) {
-		api.killRogueProcess('marketmaker');
-	}
-});
+function focusMain() {
+	if (mainWindow == null) {
+    createMainWindow()
+  } else mainWindow.show()
+}
+
+api.setupFocusApis(focusMain)
+
+app.on('activate', focusMain)
 
 // Emitted when all windows have been closed and the application will quit.
 // Calling event.preventDefault() will prevent the default behaviour, which is terminating the application.
 app.on('will-quit', (event) => {
-	if (!forceQuitApp) {
+	if (!forceQuitApp && mainWindow != null) {
 		// loading window is still open
 		api.log('will-quit while loading window active', 'quit');
 		event.preventDefault();
-	}
-});
 
-// Emitted when the application is quitting.
-// Calling event.preventDefault() will prevent the default behaviour, which is terminating the application.
-app.on('quit', (event) => {
-	if (!forceQuitApp) {
-		api.log('quit while loading window active', 'quit');
-		// event.preventDefault();
+		appExit()
 	}
 });

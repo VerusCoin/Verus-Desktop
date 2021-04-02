@@ -11,12 +11,16 @@ const pathsAgama = (api, home) => {
 
     api.paths.VerusDesktopDir = `${home}/Verus-Desktop`;
     api.paths.agamaDir = `${home}/Verus-Desktop/appdata`;
+    api.paths.pluginsDir = `${home}/Verus-Desktop/plugins`;
+    api.paths.pluginsTempDir = `${home}/Verus-Desktop/plugins/tmp`;
     api.paths.crashesDir = `${home}/Verus-Desktop/crashes`;
     api.paths.backupDir = `${home}/Verus-Desktop/backups`;
 
     if (os.platform() === 'win32') {
       api.paths.VerusDesktopDir = path.normalize(api.paths.VerusDesktopDir);
       api.paths.agamaDir = path.normalize(api.paths.agamaDir);
+      api.paths.pluginsDir = path.normalize(api.paths.pluginsDir);
+      api.paths.pluginsTempDir = path.normalize(api.paths.pluginsTempDir);
       api.paths.crashesDir = path.normalize(api.paths.crashesDir);
       api.paths.backupDir = path.normalize(api.paths.backupDir);
     }
@@ -29,6 +33,8 @@ const pathsAgama = (api, home) => {
         api.paths.VerusDesktopDir = `${home}/Library/Application Support/Verus-Desktop`;
 
         api.paths.agamaDir = `${home}/Library/Application Support/Verus-Desktop/appdata`;
+        api.paths.pluginsDir = `${home}/Library/Application Support/Verus-Desktop/plugins`;
+        api.paths.pluginsTempDir = `${home}/Library/Application Support/Verus-Desktop/plugins/tmp`;
         api.paths.crashesDir = `${home}/Library/Application Support/Verus-Desktop/crashes`;
         api.paths.backupDir = `${home}/Library/Application Support/Verus-Desktop/backups`;
         return api;
@@ -38,6 +44,8 @@ const pathsAgama = (api, home) => {
         api.paths.VerusDesktopDir = `${home}/.verus-desktop`;
 
         api.paths.agamaDir = `${home}/.verus-desktop/appdata`;
+        api.paths.pluginsDir = `${home}/.verus-desktop/plugins`;
+        api.paths.pluginsTempDir = `${home}/.verus-desktop/plugins/tmp`;
         api.paths.crashesDir = `${home}/.verus-desktop/crashes`;
         api.paths.backupDir = `${home}/.verus-desktop/backups`;
         return api;
@@ -50,6 +58,12 @@ const pathsAgama = (api, home) => {
         api.paths.agamaDir = `${home}/Verus-Desktop/appdata`;
         api.paths.agamaDir = path.normalize(api.paths.agamaDir);
 
+        api.paths.pluginsDir = `${home}/Verus-Desktop/plugins`;
+        api.paths.pluginsDir = path.normalize(api.paths.pluginsDir);
+
+        api.paths.pluginsTempDir = `${home}/Verus-Desktop/plugins/tmp`;
+        api.paths.pluginsTempDir = path.normalize(api.paths.pluginsTempDir);
+        
         api.paths.crashesDir = `${home}/Verus-Desktop/crashes`;
         api.paths.crashesDir = path.normalize(api.paths.crashesDir);
 

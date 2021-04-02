@@ -20,6 +20,24 @@ module.exports = (api) => {
     res.send(JSON.stringify(retObj));
   }, true);
 
+  api.setGet("/electrum/check_auth", (req, res, next) => {
+    try {
+      res.send(
+        JSON.stringify({
+          msg: "success",
+          result: api.seed != null,
+        })
+      );
+    } catch (e) {
+      res.send(
+        JSON.stringify({
+          msg: "error",
+          result: e.message,
+        })
+      );
+    }
+  });
+    
   api.auth = (seed, isIguana) => {
     let _wifError = false;
 
@@ -32,6 +50,8 @@ module.exports = (api) => {
     // TODO: check seed only once
     for (let key in api.electrum.coinData) {
       if (key !== 'auth') {
+        if (api.electrumKeys[key] != null) continue;
+        
         const _seed = seed;
         let keys;
         let isWif = false;

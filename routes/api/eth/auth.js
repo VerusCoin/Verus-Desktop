@@ -13,16 +13,6 @@ module.exports = (api) => {
     api.eth.wallet = mnemonicWallet;
     api.eth.connect = {};
 
-    for (let key in api.eth.coins) {
-      const network = key.toLowerCase().indexOf('ropsten') > -1 ? 'ropsten' : 'homestead';
-      
-      api.eth._connect(key, network);
-      api.eth.coins[key] = {
-        pub: api.eth.wallet.signingKey.address,
-        network,
-      };
-    }
-
     const retObj = {
       msg: 'success',
       result: 'success',
@@ -30,6 +20,13 @@ module.exports = (api) => {
 
     res.send(JSON.stringify(retObj));
   }, true);
+
+  api.setGet('/eth/check_auth', (req, res, next) => {
+    res.send(JSON.stringify({
+      msg: 'success',
+      result: api.eth.wallet != null && api.eth.wallet.signingKey != null,
+    }));
+  });
 
   api.setPost('/eth/logout', (req, res, next) => {
     api.eth.wallet = null;

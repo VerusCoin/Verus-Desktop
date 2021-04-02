@@ -149,22 +149,6 @@ module.exports = (api) => {
     });
   }
 
-  /*
-   *  type: POST
-   *
-   */
-  api.setPost('/electrum/cache/delete', (req, res, next) => {
-    api.electrumCache = {};
-    api.saveLocalSPVCache();
-
-    const retObj = {
-      msg: 'success',
-      result: 'spv cache is removed',
-    };
-
-    res.send(JSON.stringify(retObj));
-  });
-
   api.getTransaction = (txid, network, ecl) => {
     return new Promise((resolve, reject) => {
       if (!api.electrumCache[network]) {

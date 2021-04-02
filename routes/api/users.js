@@ -180,5 +180,43 @@ module.exports = (api) => {
     }
   });
 
+  /*
+   *  type: POST
+   *  params: none
+   */
+  api.setPost('/users/login', (req, res, next) => {
+    const { id } = req.body
+    api.currentUser = id
+
+    res.send(JSON.stringify({
+      msg: 'success',
+      result: null,
+    }));
+  });
+
+  /*
+   *  type: POST
+   *  params: none
+   */
+  api.setPost('/users/logout', (req, res, next) => {
+    api.currentUser = null
+
+    res.send(JSON.stringify({
+      msg: 'success',
+      result: null,
+    }));
+  });
+
+  /*
+   *  type: GET
+   *  params: none
+   */
+  api.setGet('/users/current', (req, res, next) => {
+    res.send(JSON.stringify({
+      msg: 'success',
+      result: api.currentUser,
+    }));
+  });
+
   return api;
 };

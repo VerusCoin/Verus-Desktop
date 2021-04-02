@@ -3,6 +3,9 @@ logs
 *.log
 npm-debug.log*
 
+# Builtin Plugins
+assets/plugins/builtin/*
+
 # Runtime data
 pids
 *.pid

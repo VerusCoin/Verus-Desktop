@@ -41,8 +41,8 @@ module.exports = (api) => {
         res.send(JSON.stringify(retObj));
       } else {
         const retObj = {
-          msg: 'error',
-          result: _coinuc + ' is active',
+          msg: 'success',
+          result: 'true',
         };
         res.send(JSON.stringify(retObj));
       }

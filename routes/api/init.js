@@ -69,6 +69,26 @@ module.exports = (api) => {
         api.log('verus desktop appdata folder already exists', 'init');
       }
 
+      if (!fs.existsSync(api.paths.pluginsDir)) {  
+        fs.mkdirSync(api.paths.pluginsDir);
+
+        if (fs.existsSync(api.paths.pluginsDir)) {
+          api.log(`created verus desktop plugins folder at ${api.paths.pluginsDir}`, 'init');
+        }
+      } else {
+        api.log('verus desktop plugins folder already exists', 'init');
+      }
+
+      if (!fs.existsSync(api.paths.pluginsTempDir)) {  
+        fs.mkdirSync(api.paths.pluginsTempDir);
+
+        if (fs.existsSync(api.paths.pluginsTempDir)) {
+          api.log(`created verus desktop plugins temp folder at ${api.paths.pluginsTempDir}`, 'init');
+        }
+      } else {
+        api.log('verus desktop plugins temp folder already exists', 'init');
+      }
+
       if (!fs.existsSync(api.paths.backupDir)) {
         fs.mkdirSync(api.paths.backupDir);
 
