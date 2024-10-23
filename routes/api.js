@@ -130,6 +130,7 @@ api = require('./api/native/callDaemon')(api);
 api = require('./api/native/addresses')(api);
 api = require('./api/native/balances')(api);
 api = require('./api/native/definedchains')(api);
+api = require('./api/native/getBlock.js')(api);
 api = require('./api/native/info')(api);
 api = require('./api/native/mininginfo')(api);
 api = require('./api/native/getTransaction.js')(api);
