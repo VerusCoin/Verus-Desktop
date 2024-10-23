@@ -172,6 +172,9 @@ api = require('./api/native/getNetworkGraph')(api);
 api = require('./api/native/verusbridge/verusbridge.js')(api);
 api = require('./api/native/verusbridge/vethconf.js')(api);
 
+// lite 
+api = require('./api/getSignatureInfo.js')(api);
+
 // general network calls
 api.networkFees = {}
 api.coinSupply = {}
