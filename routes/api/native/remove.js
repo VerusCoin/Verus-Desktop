@@ -12,8 +12,7 @@ module.exports = (api) => {
         let _arg = [];
   
         if (chain &&
-            !api.nativeCoindList[key.toLowerCase()] &&
-            key !== 'CHIPS') {
+            !api.nativeCoindList[key.toLowerCase()]) {
           _arg.push(`-ac_name=${chain}`);
   
           if (api.appConfig.general.native.dataDir.length) {

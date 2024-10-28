@@ -120,8 +120,6 @@ var getCoinObj = function getCoinObj(chainTicker) {
         chainTickerUc !== "VRSCTEST"
       ) {
         coinObj.options.daemon = 'komodod'; // komodod
-      } else if (chainTickerUc === 'ZEC') {
-        coinObj.options.daemon = 'zcashd'
       } else {
         coinObj.options.daemon = 'verusd'; // verusd
       }

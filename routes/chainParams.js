@@ -5,9 +5,6 @@ const chainParams = {
   VRSC: {
 		ac_name: "VRSC"
   },
-	ZEC: {
-		addnode: ['mainnet.z.cash']
-	},
   VRSCTEST: {
 		ac_name: "VRSCTEST"
   },

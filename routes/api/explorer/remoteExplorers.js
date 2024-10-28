@@ -13,7 +13,6 @@ const remoteExplorers = {
   BOTS: 'http://BOTS.explorer.supernet.org',
   MGW: 'http://MGW.explorer.supernet.org',
   WLC: 'http://WIRELESS.explorer.supernet.org',
-  CHIPS: 'http://CHIPS1.explorer.supernet.org',
   COQUI: 'https://explorer.coqui.cash',
   MNZ: 'https://www.mnzexplorer.com',
   VRSC: 'https://explorer.verus.io/',

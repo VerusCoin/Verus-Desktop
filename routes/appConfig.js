@@ -54,7 +54,7 @@ const appConfig = {
         defaultUserId: "",
         reservedChains: coinObjArray
           .map(coinObj => coinObj.id)
-          .concat(["KOMODO", "zcashd", "pirated", "komodod", "chipsd"]),
+          .concat(["KOMODO", "pirated", "komodod"]),
         pbaasChains: [],
         pbaasTestmode: true,
         alwaysPromptUpdates: true,

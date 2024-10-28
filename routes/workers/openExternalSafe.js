@@ -41,7 +41,6 @@ const allowedOrigins = [
   'bots.kmdexplorer.io',
   'mgw.kmdexplorer.io',
   'wlc.kmdexplorer.io',
-  'explorer.chips.cash',
   'explorer.coqui.cash',
   '178.62.240.191',
   'btch.kmdexplorer.io',

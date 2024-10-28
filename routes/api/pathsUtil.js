@@ -89,7 +89,6 @@ const pathsDaemons = (api) => {
         api.paths.verusDir = `${global.HOME}/Verus`,
         api.paths.verusTestDir = `${global.HOME}/VerusTest`,
         api.paths.zcashParamsDir = `${global.HOME}/ZcashParams`,
-        api.paths.chipsDir = `${global.HOME}/Chips`,
         api.paths.mmBin = path.join(__dirname, '../../node_modules/marketmaker/bin/darwin/x64/marketmaker');
         return api;
         break;
@@ -101,7 +100,6 @@ const pathsDaemons = (api) => {
         api.paths.verusDir = `${global.HOME}/Verus`,
         api.paths.verusTestDir = `${global.HOME}/VerusTest`,
         api.paths.zcashParamsDir = `${global.HOME}/ZcashParams`,
-        api.paths.chipsDir = `${global.HOME}/Chips`,
         api.paths.mmBin = path.join(__dirname, '../../node_modules/marketmaker/bin/linux/x64/marketmaker');
         return api;
         break;
@@ -117,8 +115,6 @@ const pathsDaemons = (api) => {
         api.paths.verusDir = path.normalize(api.paths.verusDir),
         api.paths.verusTestDir = `${global.HOME}/VerusTest`,
         api.paths.verusTestDir = path.normalize(api.paths.verusTestDir),
-        api.paths.chipsDir = `${global.HOME}/Chips`,
-        api.paths.chipsDir = path.normalize(api.paths.chipsDir);
         api.paths.zcashParamsDir = `${global.HOME}/ZcashParams`;
         api.paths.zcashParamsDir = path.normalize(api.paths.zcashParamsDir);
         api.paths.mmBin = path.join(__dirname, '../../node_modules/marketmaker/bin/win32/x64/marketmaker.exe');
@@ -136,7 +132,6 @@ const pathsDaemons = (api) => {
         api.paths.verusDir = `${global.HOME}/Library/Application Support/Verus`,
         api.paths.verusTestDir = `${global.HOME}/Library/Application Support/VerusTest`,
         api.paths.zcashParamsDir = `${global.HOME}/Library/Application Support/ZcashParams`,
-        api.paths.chipsDir = `${global.HOME}/Library/Application Support/Chips`,
         api.paths.mmBin = path.join(__dirname, '../../node_modules/marketmaker/bin/darwin/x64/marketmaker');
         api.paths[`vrsc-fetch-bootstrap`] = path.join(__dirname, `../../assets/bin/osx/verusd/fetch-bootstrap`);
         return api;
@@ -149,7 +144,6 @@ const pathsDaemons = (api) => {
         api.paths.verusDir = `${global.HOME}/.verus`,
         api.paths.verusTestDir = `${global.HOME}/.verustest`,
         api.paths.zcashParamsDir = `${global.HOME}/.zcash-params`,
-        api.paths.chipsDir = `${global.HOME}/.chips`,
         api.paths.mmBin = path.join(__dirname, '../../node_modules/marketmaker/bin/linux/x64/marketmaker');
         api.paths[`vrsc-fetch-bootstrap`] = path.join(__dirname, `../../assets/bin/linux64/verusd/fetch-bootstrap`);
         return api;
@@ -166,8 +160,6 @@ const pathsDaemons = (api) => {
         api.paths.verusDir = path.normalize(api.paths.verusDir),
         api.paths.verusTestDir = `${global.HOME}/VerusTest`,
         api.paths.verusTestDir = path.normalize(api.paths.verusTestDir),
-        api.paths.chipsDir = `${global.HOME}/Chips`,
-        api.paths.chipsDir = path.normalize(api.paths.chipsDir);
         api.paths.zcashParamsDir = `${global.HOME}/ZcashParams`;
         api.paths.zcashParamsDir = path.normalize(api.paths.zcashParamsDir);
         api.paths.mmBin = path.join(__dirname, '../../node_modules/marketmaker/bin/win32/x64/marketmaker.exe');

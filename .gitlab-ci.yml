@@ -8,8 +8,8 @@ stages:
 variables:
   DOCKER_DRIVER: overlay2
   DEFAULT_VERUSCOIN_BRANCH: release
-  VERUS_VERSION: 1.2.4-2
-  VERUSCOIN_VERSION: 1.2.4-2
+  VERUS_VERSION: 1.2.5
+  VERUSCOIN_VERSION: 1.2.5
   KOMODO_VERSION: 0.9.0
   KOMODO_DOWNLOAD_URL: https://github.com/KomodoPlatform/komodo/releases/download
   PIRATE_VERSION: 5.9.0
@@ -69,9 +69,6 @@ build:linux:
     - echo "${KOMODO_CLI_SHA256} ${KOMODO_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
     - tar -xzvf ${KOMODO_CLI_PACKAGE} --directory assets/bin/linux64/komodod
     - rm ${KOMODO_CLI_PACKAGE}
-    - gsutil cp $STAGING/VerusCoin/Zcash/zcashd-linux-x86_64.tar.gz .
-    - tar -xzvf zcashd-linux-x86_64.tar.gz --directory assets/bin/linux64/
-    - rm zcashd-linux-x86_64.tar.gz
     - wget ${PIRATE_DOWNLOAD_URL}/v${PIRATE_VERSION}/${PIRATE_CLI_PACKAGE}
     - echo "${PIRATE_CLI_SHA256} ${PIRATE_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
     - unzip ${PIRATE_CLI_PACKAGE} -d assets/bin/linux64/pirated
@@ -127,9 +124,6 @@ build:linux:arm64:
     - gsutil cp $STAGING/$VERUS_CLI_LINUX .
     - tar -xzvf Verus-CLI-Linux-v${VERUSCOIN_VERSION}-arm64.tar.gz --strip=1 --directory assets/bin/linux64/verusd
     - rm Verus-CLI-Linux-v${VERUSCOIN_VERSION}-arm64.tar.gz
-    - gsutil cp $STAGING/VerusCoin/Zcash/zcashd-linux-arm64.tar.gz .
-    - tar -xzvf zcashd-linux-arm64.tar.gz --directory assets/bin/linux64/
-    - rm zcashd-linux-arm64.tar.gz
     - wget ${PIRATE_DOWNLOAD_URL}/v${PIRATE_VERSION}/${PIRATE_CLI_PACKAGE}
     - echo "${PIRATE_CLI_SHA256} ${PIRATE_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
     - unzip ${PIRATE_CLI_PACKAGE} -d assets/bin/linux64/pirated
@@ -198,9 +192,6 @@ build:windows:
     - unzip -qq Verus-CLI-Windows-v${VERUSCOIN_VERSION}.zip -d assets/bin/win64
     - mv assets/bin/win64/verus-cli assets/bin/win64/verusd
     - rm Verus-CLI-Windows-v${VERUSCOIN_VERSION}.zip
-    - gsutil cp $STAGING/VerusCoin/Zcash/zcashd-win.tar.gz .
-    - tar -xzvf zcashd-win.tar.gz --directory assets/bin/win64/
-    - rm zcashd-win.tar.gz
     - wget ${PIRATE_DOWNLOAD_URL}/v${PIRATE_VERSION}/${PIRATE_CLI_PACKAGE}
     - echo "${PIRATE_CLI_SHA256} ${PIRATE_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
     - unzip ${PIRATE_CLI_PACKAGE} -d assets/bin/win64/pirated
@@ -266,9 +257,6 @@ build:mac:
     - echo "${KOMODO_CLI_SHA256} ${KOMODO_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
     - tar -xzvf ${KOMODO_CLI_PACKAGE} --directory assets/bin/osx/komodod
     - rm ${KOMODO_CLI_PACKAGE}
-    - gsutil cp $STAGING/VerusCoin/Zcash/zcashd-macos.tar.gz .
-    - tar -xzvf zcashd-macos.tar.gz --directory assets/bin/osx/
-    - rm zcashd-macos.tar.gz
     - wget ${PIRATE_DOWNLOAD_URL}/v${PIRATE_VERSION}/${PIRATE_CLI_PACKAGE}
     - echo "${PIRATE_CLI_SHA256} ${PIRATE_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
     - unzip ${PIRATE_CLI_PACKAGE} -d assets/bin/osx/pirated

@@ -1,7 +1,7 @@
 {
   "name": "verus-desktop",
   "productName": "Verus-Desktop",
-  "version": "1.2.4-2",
+  "version": "1.2.5",
   "description": "Verus Desktop Wallet App",
   "main": "main.js",
   "scripts": {
@@ -193,6 +193,7 @@
     "axios": "1.6.5",
     "json5": "2.2.2",
     "semver": "6.3.1",
-    "tough-cookie": "4.1.3"
+    "tough-cookie": "4.1.3",
+    "secp256k1": "3.8.1"
   }
 }
