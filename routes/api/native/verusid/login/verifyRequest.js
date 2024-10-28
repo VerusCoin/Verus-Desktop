@@ -7,22 +7,10 @@ module.exports = (api) => {
    */
   api.native.verusid.login.verify_request = async (request) => {
     const loginConsentRequest = new LoginConsentRequest(request);
-
-    let chain_id
-
-    switch (loginConsentRequest.system_id) {
-      case "i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV":
-        chain_id = "VRSC";
-        break;
-      case "iJhCezBExJHvtyH3fGhNnt2NhU4Ztkf2yq":
-        chain_id = "VRSCTEST";
-        break;
-      default:
-        throw new Error("Unknown system id.")
-    }
+    const chainTicker = request.chainTicker
 
     const verified = await api.native.verify_hash(
-      chain_id,
+      chainTicker,
       loginConsentRequest.signing_id,
       loginConsentRequest.challenge.toSha256().toString('hex'),
       loginConsentRequest.signature.signature

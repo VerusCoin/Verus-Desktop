@@ -13,7 +13,8 @@ module.exports = (api) => {
           req.toJson(),
           {
             id: "VERUS_DESKTOP_MAIN",
-            search_builtin: true
+            search_builtin: true,
+            main_chain_ticker: "VRSC"
           }
         )
       }
