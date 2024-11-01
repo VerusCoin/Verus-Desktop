@@ -68,6 +68,36 @@ module.exports = (api) => {
     });
   };
 
+  /**
+   * Signs data given the arguments including an identity/address currently in the wallet
+   * and the data to be signed
+   * 
+   * @param {String} coin The chainTicker of the coin to make the call on
+   * @param {String} arguments The arguments to pass to signdata
+   */
+  api.native.sign_data = (
+    coin,
+    arguments,
+  ) => {
+    return new Promise((resolve, reject) => {
+      api.native
+        .callDaemon(
+          coin,
+          "signdata",
+          [
+            arguments,
+          ]
+        )
+      .then(resultObj => {
+        resolve(resultObj)
+      })
+      .catch(err => {
+        reject(err);
+      });
+    });
+  };
+
+
   api.setPost('/native/sign_message', (req, res, next) => {
     const {
       chainTicker,

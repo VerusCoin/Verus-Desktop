@@ -551,7 +551,7 @@ if (!hasLock) {
     focusMain();
 
     if (process.platform == "win32" || process.platform == "linux") {
-      const argIndex = (appConfig.general.main.dev || process.argv.indexOf("devmode") > -1) ? 2 : 1;
+      const argIndex = 2;
       openurlhandler(null, argv.slice(1).toString().split(",")[argIndex], api.dlhandler);
     }
   }

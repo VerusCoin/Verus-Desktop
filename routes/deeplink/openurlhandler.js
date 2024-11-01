@@ -12,10 +12,13 @@ function openurlhandler(event, urlstring, apihandler) {
 
     return apihandler(url);
   } catch (e) {
-    dialog.showErrorBox(
-      "Something went wrong",
-      `Error: "${e.message}". For url string: "${urlstring}".`
-    );
+    setTimeout(() => {
+      // This avoids crashing 20 seconds after the error box has been left open.
+      dialog.showErrorBox(
+        "Something went wrong?",
+        `Error: "${e.message}". For url string: "${urlstring}".`
+      );
+    }, 0);
   }
 }
 

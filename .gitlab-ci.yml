@@ -1,18 +1,18 @@
 stages:
-- build
-- test
-- deploy
+  - build
+  - test
+  - deploy
 ########################################################################################################################
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
   DOCKER_DRIVER: overlay2
   DEFAULT_VERUSCOIN_BRANCH: release
-  VERUS_VERSION: 1.1.1-11
-  VERUSCOIN_VERSION: 1.1.1-11
-  KOMODO_VERSION: 0.8.0
+  VERUS_VERSION: 1.2.5
+  VERUSCOIN_VERSION: 1.2.5
+  KOMODO_VERSION: 0.9.0
   KOMODO_DOWNLOAD_URL: https://github.com/KomodoPlatform/komodo/releases/download
-  PIRATE_VERSION: 5.7.5
+  PIRATE_VERSION: 5.9.0
   PIRATE_DOWNLOAD_URL: https://github.com/PirateNetwork/pirate/releases/download
   BINARY_SOURCE: VerusCoin
   VERUS_APPIMAGE_X64: Verus-Desktop-v${VERUS_VERSION}-x86_64.AppImage
@@ -41,8 +41,10 @@ build:linux:
   stage: build
   variables:
     DOCKER_DRIVER: overlay2
-    KOMODO_CLI_PACKAGE: komodo_${KOMODO_VERSION}_linux.zip
-    PIRATE_CLI_PACKAGE: pirate-cli-ubuntu1804-v${PIRATE_VERSION}.zip
+    KOMODO_CLI_PACKAGE: komodo-${KOMODO_VERSION}-linux.tar.gz
+    KOMODO_CLI_SHA256: ed28bce09176c212c1eac9abf9fce41c948ef1199764b03b607a461146952107
+    PIRATE_CLI_PACKAGE: pirate-cli-ubuntu2004-v${PIRATE_VERSION}.zip
+    PIRATE_CLI_SHA256: 2358e992a6649517f6a72f790105468a22c5ae22302076b06f9c528b7c7c4788
   before_script:
     - echo "$AUTH_KEY" > AUTH_KEY.json &&
       gcloud auth activate-service-account
@@ -64,14 +66,11 @@ build:linux:
     - mkdir -p assets/bin/linux64/komodod
     - mkdir -p assets/bin/linux64/pirated
     - wget ${KOMODO_DOWNLOAD_URL}/v${KOMODO_VERSION}/${KOMODO_CLI_PACKAGE}
-    - unzip -j ${KOMODO_CLI_PACKAGE} komodod -d assets/bin/linux64/komodod
-    - unzip -j ${KOMODO_CLI_PACKAGE} komodo-cli -d assets/bin/linux64/komodod
-    - unzip -j ${KOMODO_CLI_PACKAGE} wallet-utility -d assets/bin/linux64/komodod
+    - echo "${KOMODO_CLI_SHA256} ${KOMODO_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
+    - tar -xzvf ${KOMODO_CLI_PACKAGE} --directory assets/bin/linux64/komodod
     - rm ${KOMODO_CLI_PACKAGE}
-    - gsutil cp $STAGING/VerusCoin/Zcash/zcashd-linux-x86_64.tar.gz .
-    - tar -xzvf zcashd-linux-x86_64.tar.gz --directory assets/bin/linux64/
-    - rm zcashd-linux-x86_64.tar.gz
     - wget ${PIRATE_DOWNLOAD_URL}/v${PIRATE_VERSION}/${PIRATE_CLI_PACKAGE}
+    - echo "${PIRATE_CLI_SHA256} ${PIRATE_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
     - unzip ${PIRATE_CLI_PACKAGE} -d assets/bin/linux64/pirated
     - rm ${PIRATE_CLI_PACKAGE}
     - sed -i "s/process.env.INFURA_PROJECT_ID/'${INFURA_PROJECT_ID}'/g" keys/infura.js
@@ -105,6 +104,7 @@ build:linux:arm64:
   variables:
     DOCKER_DRIVER: overlay2
     PIRATE_CLI_PACKAGE: pirate-cli-aarch64-v${PIRATE_VERSION}.zip
+    PIRATE_CLI_SHA256: c6a3b13881155fb11a8743a9d319254a0ca70f99c14382fb28384446fffe52c5
   before_script:
     - echo "$AUTH_KEY" > AUTH_KEY.json &&
       gcloud auth activate-service-account
@@ -124,10 +124,8 @@ build:linux:arm64:
     - gsutil cp $STAGING/$VERUS_CLI_LINUX .
     - tar -xzvf Verus-CLI-Linux-v${VERUSCOIN_VERSION}-arm64.tar.gz --strip=1 --directory assets/bin/linux64/verusd
     - rm Verus-CLI-Linux-v${VERUSCOIN_VERSION}-arm64.tar.gz
-    - gsutil cp $STAGING/VerusCoin/Zcash/zcashd-linux-arm64.tar.gz .
-    - tar -xzvf zcashd-linux-arm64.tar.gz --directory assets/bin/linux64/
-    - rm zcashd-linux-arm64.tar.gz
     - wget ${PIRATE_DOWNLOAD_URL}/v${PIRATE_VERSION}/${PIRATE_CLI_PACKAGE}
+    - echo "${PIRATE_CLI_SHA256} ${PIRATE_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
     - unzip ${PIRATE_CLI_PACKAGE} -d assets/bin/linux64/pirated
     - rm ${PIRATE_CLI_PACKAGE}
     - sed -i "s/process.env.INFURA_PROJECT_ID/'${INFURA_PROJECT_ID}'/g" keys/infura.js
@@ -164,8 +162,10 @@ build:windows:
   image: asherd/agama-builder:windows
   variables:
     DOCKER_DRIVER: overlay2
-    KOMODO_CLI_PACKAGE: komodo_${KOMODO_VERSION}_windows.zip
+    KOMODO_CLI_PACKAGE: komodo-${KOMODO_VERSION}-win.zip
+    KOMODO_CLI_SHA256: 0b36821ebccdaf6bc060dc31083e6d8f48f7f8bc35e519b127bf1ccc05cf9890
     PIRATE_CLI_PACKAGE: pirate-cli-windows-v${PIRATE_VERSION}.zip
+    PIRATE_CLI_SHA256: deb338bf2bcabfdb32be3c13dfaed78d83749fbae9d3985e47cb001ff058bb3f
   before_script:
     - echo "$AUTH_KEY" > AUTH_KEY.json &&
       gcloud auth activate-service-account
@@ -183,6 +183,7 @@ build:windows:
     - mkdir -p assets/bin/win64/komodod
     - mkdir -p assets/bin/win64/pirated
     - wget ${KOMODO_DOWNLOAD_URL}/v${KOMODO_VERSION}/${KOMODO_CLI_PACKAGE}
+    - echo "${KOMODO_CLI_SHA256} ${KOMODO_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
     - unzip -j ${KOMODO_CLI_PACKAGE} komodod.exe -d assets/bin/win64/komodod
     - unzip -j ${KOMODO_CLI_PACKAGE} komodo-cli.exe -d assets/bin/win64/komodod
     - unzip -j ${KOMODO_CLI_PACKAGE} wallet-utility.exe -d assets/bin/win64/komodod
@@ -191,10 +192,8 @@ build:windows:
     - unzip -qq Verus-CLI-Windows-v${VERUSCOIN_VERSION}.zip -d assets/bin/win64
     - mv assets/bin/win64/verus-cli assets/bin/win64/verusd
     - rm Verus-CLI-Windows-v${VERUSCOIN_VERSION}.zip
-    - gsutil cp $STAGING/VerusCoin/Zcash/zcashd-win.tar.gz .
-    - tar -xzvf zcashd-win.tar.gz --directory assets/bin/win64/
-    - rm zcashd-win.tar.gz
     - wget ${PIRATE_DOWNLOAD_URL}/v${PIRATE_VERSION}/${PIRATE_CLI_PACKAGE}
+    - echo "${PIRATE_CLI_SHA256} ${PIRATE_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
     - unzip ${PIRATE_CLI_PACKAGE} -d assets/bin/win64/pirated
     - rm ${PIRATE_CLI_PACKAGE}
     - sed -i "s/process.env.INFURA_PROJECT_ID/'${INFURA_PROJECT_ID}'/g" keys/infura.js
@@ -228,10 +227,12 @@ build:windows:
 ########################################################################################################################
 build:mac:
   stage: build
-  tags: ["Big Sur"]
+  tags: ["Ventura"]
   variables:
-    KOMODO_CLI_PACKAGE: komodo_${KOMODO_VERSION}_macos.zip
+    KOMODO_CLI_PACKAGE: komodo-${KOMODO_VERSION}-mac.zip
+    KOMODO_CLI_SHA256: 1a092af97b34f4e2ea99b95a91599fc4fdca3881c7e3afa468a5df043a460694
     PIRATE_CLI_PACKAGE: pirate-cli-MacOS-v${PIRATE_VERSION}.zip
+    PIRATE_CLI_SHA256: c20a761c36e494cd2b19237162881bb0dcdae24e6eec996072cc5ee7135e8362
   before_script:
     - echo "$AUTH_KEY" > AUTH_KEY.json &&
       gcloud auth activate-service-account
@@ -253,14 +254,11 @@ build:mac:
     - tar -xzf Verus-CLI-MacOS-v${VERUSCOIN_VERSION}.tar.gz --strip=1 --directory assets/bin/osx/verusd
     - rm Verus-CLI-MacOS-v${VERUSCOIN_VERSION}.tar.gz
     - wget ${KOMODO_DOWNLOAD_URL}/v${KOMODO_VERSION}/${KOMODO_CLI_PACKAGE}
-    - unzip -j ${KOMODO_CLI_PACKAGE} komodod -d assets/bin/osx/komodod
-    - unzip -j ${KOMODO_CLI_PACKAGE} komodo-cli -d assets/bin/osx/komodod
-    - unzip -j ${KOMODO_CLI_PACKAGE} wallet-utility -d assets/bin/osx/komodod
+    - echo "${KOMODO_CLI_SHA256} ${KOMODO_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
+    - tar -xzvf ${KOMODO_CLI_PACKAGE} --directory assets/bin/osx/komodod
     - rm ${KOMODO_CLI_PACKAGE}
-    - gsutil cp $STAGING/VerusCoin/Zcash/zcashd-macos.tar.gz .
-    - tar -xzvf zcashd-macos.tar.gz --directory assets/bin/osx/
-    - rm zcashd-macos.tar.gz
     - wget ${PIRATE_DOWNLOAD_URL}/v${PIRATE_VERSION}/${PIRATE_CLI_PACKAGE}
+    - echo "${PIRATE_CLI_SHA256} ${PIRATE_CLI_PACKAGE}" | sha256sum -c - || { echo "SHA-256 checksum does not match. Exiting."; exit 1; }
     - unzip ${PIRATE_CLI_PACKAGE} -d assets/bin/osx/pirated
     - rm ${PIRATE_CLI_PACKAGE}
     - sed -i -e "s/process.env.INFURA_PROJECT_ID/'${INFURA_PROJECT_ID}'/g" keys/infura.js

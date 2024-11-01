@@ -7,11 +7,12 @@ module.exports = (api) => {
    */
   api.native.verusid.login.verify_request = async (request) => {
     const loginConsentRequest = new LoginConsentRequest(request);
+    const chainTicker = request.chainTicker
 
-    const verified = await api.native.verify_message(
-      loginConsentRequest.chain_id,
+    const verified = await api.native.verify_hash(
+      chainTicker,
       loginConsentRequest.signing_id,
-      loginConsentRequest.getSignedData(),
+      loginConsentRequest.challenge.toSha256().toString('hex'),
       loginConsentRequest.signature.signature
     );
 

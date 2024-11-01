@@ -3,6 +3,7 @@ const {
   LOGIN_CONSENT_RESPONSE_VDXF_KEY,
   LOGIN_CONSENT_WEBHOOK_VDXF_KEY,
   LOGIN_CONSENT_REDIRECT_VDXF_KEY,
+  LoginConsentResponse,
 } = require("verus-typescript-primitives");
 const { pushMessage } = require('../../../ipc/ipc');
 const { ReservedPluginTypes } = require('../../utils/plugin/builtin');
@@ -14,8 +15,8 @@ module.exports = (api) => {
   api.loginConsentUi = {}
 
   api.loginConsentUi.handle_redirect = (response, redirectinfo) => {
-    const { type, uri } = redirectinfo
-    
+    const { vdxfkey, uri } = redirectinfo
+
     const handlers = {
       [LOGIN_CONSENT_WEBHOOK_VDXF_KEY.vdxfid]: async () => {
         return await axios.post(
@@ -25,9 +26,10 @@ module.exports = (api) => {
       },
       [LOGIN_CONSENT_REDIRECT_VDXF_KEY.vdxfid]: () => {
         const url = new URL(uri)
+        const res = new LoginConsentResponse(response)
         url.searchParams.set(
           LOGIN_CONSENT_RESPONSE_VDXF_KEY.vdxfid,
-          base64url(JSON.stringify(response))
+          base64url(res.toBuffer())
         );
         
         shell.openExternal(url.toString())
@@ -35,7 +37,7 @@ module.exports = (api) => {
       }
     }
 
-    return handlers[type] == null ? null : handlers[type]();
+    return handlers[vdxfkey] == null ? null : handlers[vdxfkey]();
   }
 
   api.loginConsentUi.request = async (

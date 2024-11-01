@@ -1,4 +1,4 @@
-const { LOGIN_CONSENT_REQUEST_VDXF_KEY } = require('verus-typescript-primitives');
+const { LOGIN_CONSENT_REQUEST_VDXF_KEY, LoginConsentRequest } = require('verus-typescript-primitives');
 const base64url = require("base64url");
 
 module.exports = (api) => {
@@ -6,12 +6,15 @@ module.exports = (api) => {
     const handlers = {
       [LOGIN_CONSENT_REQUEST_VDXF_KEY.vdxfid]: (url) => {
         const value = url.searchParams.get(LOGIN_CONSENT_REQUEST_VDXF_KEY.vdxfid)
-        
+        const req = new LoginConsentRequest();
+        req.fromBuffer(base64url.toBuffer(value));
+
         return api.loginConsentUi.request(
-          JSON.parse(base64url.decode(value)),
+          req.toJson(),
           {
             id: "VERUS_DESKTOP_MAIN",
-            search_builtin: true
+            search_builtin: true,
+            main_chain_ticker: "VRSC"
           }
         )
       }

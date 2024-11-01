@@ -130,6 +130,7 @@ api = require('./api/native/callDaemon')(api);
 api = require('./api/native/addresses')(api);
 api = require('./api/native/balances')(api);
 api = require('./api/native/definedchains')(api);
+api = require('./api/native/getBlock.js')(api);
 api = require('./api/native/info')(api);
 api = require('./api/native/mininginfo')(api);
 api = require('./api/native/getTransaction.js')(api);
@@ -171,6 +172,9 @@ api = require('./api/native/importwallet')(api);
 api = require('./api/native/getNetworkGraph')(api);
 api = require('./api/native/verusbridge/verusbridge.js')(api);
 api = require('./api/native/verusbridge/vethconf.js')(api);
+
+// lite 
+api = require('./api/getSignatureInfo.js')(api);
 
 // general network calls
 api.networkFees = {}
