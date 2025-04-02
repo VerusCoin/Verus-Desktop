@@ -7987,6 +7987,16 @@ verror@^1.10.0:
     bs58check "2.0.0"
     create-hash "1.2.0"
 
+"verus-typescript-primitives@git+https://github.com/mcstoer/verus-typescript-primitives.git#credential-class":
+  version "1.0.0"
+  resolved "git+https://github.com/mcstoer/verus-typescript-primitives.git#dd497f8efaf28e8a6e22f810da14bb45ba9e7dab"
+  dependencies:
+    base64url "3.0.1"
+    bech32 "2.0.0"
+    bn.js "5.2.1"
+    bs58check "2.0.0"
+    create-hash "1.2.0"
+
 "verus-wallet-endpoints@git+https://github.com/VerusCoin/verus-wallet-endpoints.git":
   version "1.0.0"
   resolved "git+https://github.com/VerusCoin/verus-wallet-endpoints.git#d7c9d51138e5231ac66cbfe316fb5d7527d35e4c"
