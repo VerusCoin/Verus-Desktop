@@ -1,5 +1,6 @@
 const {
   DATA_TYPE_OBJECT_DATADESCRIPTOR,
+  fromBase58Check,
 } = require("verus-typescript-primitives");
 const { parseCredential } = require("../../utils/credentials/parseCredential");
 
@@ -115,7 +116,21 @@ module.exports = (api) => {
     // Process each credential and organize by scope.
     for (const credential of credentialsList) {
       
-      const scope = credential.scopes;
+      // Try to convert the scope into an i-address, if it isn't one already.
+      let scope = credential.scopes;
+      try {
+        fromBase58Check(scope);
+      } catch {
+        try {
+          const scopeId = await api.native.get_identity(coin, credential.scopes);
+          if (scopeId && scopeId.identity && scopeId.identity.identityaddress) {
+            scope = scopeId.identity.identityaddress;
+          }
+          // If there is an error getting the identity, then the scope is not an identity.
+          // In that case, just leave the scope as is.
+        } catch {}
+      }
+
       const credentialKey = credential.credentialKey;
       
       if (!credentialsMap[scope]) {
