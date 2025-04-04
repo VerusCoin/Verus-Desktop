@@ -167,6 +167,7 @@ api = require('./api/native/verusid/login/verifyRequest.js')(api);
 api = require('./api/native/verusid/login/signResponse.js')(api);
 api = require('./api/native/verusid/provision/signIdProvisioningRequest.js')(api);
 api = require('./api/native/verusid/provision/verifyIdProvisioningResponse.js')(api);
+api = require('./api/native/credentials/getCredentials.js')(api);
 api = require('./api/native/makeoffer')(api);
 api = require('./api/native/getoffers')(api);
 api = require('./api/native/closeoffers')(api);

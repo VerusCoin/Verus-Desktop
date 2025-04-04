@@ -7989,7 +7989,7 @@ verror@^1.10.0:
 
 "verus-typescript-primitives@git+https://github.com/mcstoer/verus-typescript-primitives.git#credential-class":
   version "1.0.0"
-  resolved "git+https://github.com/mcstoer/verus-typescript-primitives.git#dd497f8efaf28e8a6e22f810da14bb45ba9e7dab"
+  resolved "git+https://github.com/mcstoer/verus-typescript-primitives.git#45002fa364bcf66fd4f0a87f37bac689a04b14bf"
   dependencies:
     base64url "3.0.1"
     bech32 "2.0.0"
