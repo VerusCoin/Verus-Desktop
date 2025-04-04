@@ -167,10 +167,40 @@ module.exports = (api) => {
     scope
   ) => {
     const credentialsMap = await api.native.get_credentials_map(coin, address);
-
-    console.log(credentialsMap[scope])
+    
     return credentialsMap[scope];
-  }
+  };
+
+  api.setPost("/native/get_credentials_by_scope", async (req, res, next) => {
+    const { 
+      coin,
+      address,
+      scope 
+    } = req.body;
+
+    api.native
+      .get_credentials_by_scope(
+        coin,
+        address,
+        scope
+      )
+      .then(resultObj => {
+      const retObj = {
+        msg: "success",
+        result: resultObj
+      };
+
+      res.send(JSON.stringify(retObj));
+      })
+      .catch(error => {
+      const retObj = {
+        msg: "error",
+        result: error.message
+      };
+
+      res.send(JSON.stringify(retObj));
+      });
+  });
 
   return api;
 };
