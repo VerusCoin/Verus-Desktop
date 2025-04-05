@@ -113,8 +113,10 @@ module.exports = (api) => {
     // Track seen credential keys by scope to avoid duplicates.
     const seenCredentials = {};
     
-    // Process each credential and organize by scope.
-    for (const credential of credentialsList) {
+    // Process each credential and organize by scope in reverse order so 
+    // the newest credentials are first.
+    for (let i = credentialsList.length - 1; i >= 0; i--) {
+      const credential = credentialsList[i];
       
       // Try to convert the scope into an i-address, if it isn't one already.
       let scope = credential.scopes;
