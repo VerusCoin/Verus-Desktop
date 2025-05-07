@@ -113,20 +113,20 @@ module.exports = (api) => {
     // Track seen credential keys by scope to avoid duplicates.
     const seenCredentials = {};
     
-    // Process each credential and organize by scope in reverse order so 
+    // Process each credential and organize by the main scope in reverse order so 
     // the newest credentials are first.
     for (let i = credentialsList.length - 1; i >= 0; i--) {
       const credential = credentialsList[i];
       
-      // Try to convert the scope into an i-address, if it isn't one already.
-      let scope = credential.scopes;
+      // Try to convert the main scope into an i-address, if it isn't one already.
+      let mainScope = credential.scopes[0];
       try {
         fromBase58Check(scope);
       } catch {
         try {
-          const scopeId = await api.native.get_identity(coin, credential.scopes);
+          const scopeId = await api.native.get_identity(coin, mainScope);
           if (scopeId && scopeId.identity && scopeId.identity.identityaddress) {
-            scope = scopeId.identity.identityaddress;
+            mainScope = scopeId.identity.identityaddress;
           }
           // If there is an error getting the identity, then the scope is not an identity.
           // In that case, just leave the scope as is.
@@ -135,20 +135,20 @@ module.exports = (api) => {
 
       const credentialKey = credential.credentialKey;
       
-      if (!credentialsMap[scope]) {
-        credentialsMap[scope] = [];
+      if (!credentialsMap[mainScope]) {
+        credentialsMap[mainScope] = [];
       }
       
       // Using a set to track duplicates for efficient lookup.
-      if (!seenCredentials[scope]) {
-        seenCredentials[scope] = new Set();
+      if (!seenCredentials[mainScope]) {
+        seenCredentials[mainScope] = new Set();
       }
       
       // Skip duplicate credentials that come later since they are 
       // the previous credentials for that scope.
-      if (!seenCredentials[scope].has(credentialKey)) {
-        credentialsMap[scope].push(credential);
-        seenCredentials[scope].add(credentialKey);
+      if (!seenCredentials[mainScope].has(credentialKey)) {
+        credentialsMap[mainScope].push(credential);
+        seenCredentials[mainScope].add(credentialKey);
       }
     }
     
