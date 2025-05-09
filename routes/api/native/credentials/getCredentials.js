@@ -161,30 +161,41 @@ module.exports = (api) => {
    * @param {String} coin The chainTicker of the coin to make the call on
    * @param {String} address The identity or address to get the credentials from
    * @param {String} scope The scope of the credentials to get
+   * @param {string[]} credentialKeys - Optional list of credential keys to filter the result by
    */
 
   api.native.get_credentials_by_scope = async (
     coin,
     address,
-    scope
+    scope,
+    credentialKeys
   ) => {
     const credentialsMap = await api.native.get_credentials_map(coin, address);
+    const scopeCredentials = credentialsMap[scope] || [];
     
-    return credentialsMap[scope];
+    if (!credentialKeys || credentialKeys.length === 0) {
+      return scopeCredentials;
+    }
+
+    return scopeCredentials.filter(cred => 
+      credentialKeys.includes(cred.credentialKey)
+    );
   };
 
   api.setPost("/native/get_credentials_by_scope", async (req, res, next) => {
     const { 
       coin,
       address,
-      scope 
+      scope,
+      credentialKeys
     } = req.body;
 
     api.native
       .get_credentials_by_scope(
         coin,
         address,
-        scope
+        scope,
+        credentialKeys
       )
       .then(resultObj => {
       const retObj = {
