@@ -1564,7 +1564,7 @@ bitcoinjs-message@^2.1.0:
   optionalDependencies:
     secp256k1 "^3.5.2"
 
-"blake2b-wasm@git+https://github.com/michaeltout/blake2b-wasm.git", "blake2b-wasm@https://github.com/BitGo/blake2b-wasm#193cdb71656c1a6c7f89b05d0327bb9b758d071b", "blake2b-wasm@https://github.com/michaeltout/blake2b-wasm":
+blake2b-wasm@^2.4.0, "blake2b-wasm@git+https://github.com/michaeltout/blake2b-wasm.git", "blake2b-wasm@https://github.com/BitGo/blake2b-wasm#193cdb71656c1a6c7f89b05d0327bb9b758d071b", "blake2b-wasm@https://github.com/michaeltout/blake2b-wasm":
   version "2.0.0"
   resolved "https://github.com/michaeltout/blake2b-wasm#a16070b30bb8d8aee670f0c69b642913eca79998"
   dependencies:
@@ -1576,6 +1576,13 @@ bitcoinjs-message@^2.1.0:
   dependencies:
     blake2b-wasm "https://github.com/BitGo/blake2b-wasm#193cdb71656c1a6c7f89b05d0327bb9b758d071b"
     nanoassert "^1.0.0"
+
+"blake2b@https://github.com/VerusCoin/blake2b":
+  version "2.1.4"
+  resolved "https://github.com/VerusCoin/blake2b#578dc12b7b68a3ce76d1e1add1402b28a5890a6b"
+  dependencies:
+    blake2b-wasm "^2.4.0"
+    nanoassert "^2.0.0"
 
 "blake2b@https://github.com/VerusCoin/blake2b.git":
   version "2.1.3"
@@ -7987,12 +7994,13 @@ verror@^1.10.0:
     bs58check "2.0.0"
     create-hash "1.2.0"
 
-"verus-typescript-primitives@git+https://github.com/mcstoer/verus-typescript-primitives.git#credential-class":
+"verus-typescript-primitives@git+https://github.com/mcstoer/verus-typescript-primitives.git#credential-class-iur":
   version "1.0.0"
-  resolved "git+https://github.com/mcstoer/verus-typescript-primitives.git#0d06b404ec018be0df7a47d5551b1cf241df59fc"
+  resolved "git+https://github.com/mcstoer/verus-typescript-primitives.git#02909300fb884b6274d95a01f0b3473a32e9cb4d"
   dependencies:
     base64url "3.0.1"
     bech32 "2.0.0"
+    blake2b "https://github.com/VerusCoin/blake2b"
     bn.js "5.2.1"
     bs58check "2.0.0"
     create-hash "1.2.0"

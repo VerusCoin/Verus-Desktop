@@ -7,7 +7,7 @@ const {
 const parseCredential = (credObj) => {
   const credJson = credObj[DATA_TYPE_OBJECT_CREDENTIAL.vdxfid];
 
-  return Credential.fromJSON(credJson);
+  return Credential.fromJson(credJson);
 };
 
 module.exports = {
