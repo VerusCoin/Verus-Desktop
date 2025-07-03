@@ -46,8 +46,8 @@ module.exports = (api) => {
     return handlers[vdxfkey] == null ? null : handlers[vdxfkey]();
   }
 
-  api.loginConsentUi.request = async (
-    request,
+  api.loginConsentUi.deeplink = async (
+    deeplink,
     originInfo
   ) => {
     return new Promise((resolve, reject) => {
@@ -68,7 +68,7 @@ module.exports = (api) => {
             pushMessage(
               pluginWindow,
               {
-                request: request,
+                deeplink: deeplink,
                 origin_app_info: originInfo,
               },
               "VERUS_LOGIN_CONSENT_REQUEST"
@@ -91,7 +91,7 @@ module.exports = (api) => {
     try {
       const retObj = {
         msg: "success",
-        result: await api.loginConsentUi.request(
+        result: await api.loginConsentUi.deeplink(
           request,
           {
             id: app_id,
