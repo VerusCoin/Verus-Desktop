@@ -1,4 +1,4 @@
-const { LOGIN_CONSENT_REQUEST_VDXF_KEY, LoginConsentRequest, VERUSPAY_INVOICE_VDXF_KEY, VerusPayInvoice } = require('verus-typescript-primitives');
+const { LOGIN_CONSENT_REQUEST_VDXF_KEY, LoginConsentRequest, VERUSPAY_INVOICE_VDXF_KEY, VerusPayInvoice, IDENTITY_UPDATE_REQUEST_VDXF_KEY, IdentityUpdateRequest } = require('verus-typescript-primitives');
 const base64url = require("base64url");
 const { ROOT_SYSTEM_NAME } = require('./utils/constants/dev_options');
 const { SUPPORTED_DLS, CALLBACK_HOST } = require('./utils/constants/supported_dls');
@@ -22,20 +22,17 @@ module.exports = (api) => {
 
       switch (id) {
         case LOGIN_CONSENT_REQUEST_VDXF_KEY.vdxfid:
-          dl = new LoginConsentRequest();
-          dl.fromBuffer(
-            base64url.toBuffer(
-              url.searchParams.get(LOGIN_CONSENT_REQUEST_VDXF_KEY.vdxfid),
-            ),
-          );
+          dl = LoginConsentRequest.fromWalletDeeplinkUri(urlstring);
           break;
 
         case VERUSPAY_INVOICE_VDXF_KEY.vdxfid:
           dl = VerusPayInvoice.fromWalletDeeplinkUri(urlstring);
-          
-          // TODO: Handle VerusPay invoice processing here
-          throw new Error('VerusPay is unsupported');
+          break;
 
+        case IDENTITY_UPDATE_REQUEST_VDXF_KEY.vdxfid:
+          dl = IdentityUpdateRequest.fromWalletDeeplinkUri(urlstring);
+          break;
+          
         default:
           throw new Error(`Unsupported deeplink ID: ${id}`);
       }
