@@ -12,9 +12,8 @@ module.exports = (api) => {
       coin,
       identityUpdateRequest.signingid.toAddress(),
       identityUpdateRequest.details.toSha256().toString('hex'),
-      // The nesting of the signature does not match the expected structure
-      // and is also more nested than in the login consent plugin.
-      identityUpdateRequest.signature.signature.signature.signature
+      // The nesting of the signature does not match the expected structure.
+      identityUpdateRequest.signature.signature.signature
     );
 
     return verified ? { verified } : { verified, message: "Failed to verify signature" };
