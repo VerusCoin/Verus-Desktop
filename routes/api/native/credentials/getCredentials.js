@@ -15,7 +15,7 @@ module.exports = (api) => {
     coin,
     address
   ) => {
-    // Get the z-address and contentmultimap from the address
+    // Get the z-address and contentmultimap from the address.
     const identity = await api.native.get_identity_content(coin, address);
     
     if (!identity || !identity.identity) {
@@ -57,37 +57,40 @@ module.exports = (api) => {
     
     const credentialKey = credentialKeyResult.vdxfid;
     
-    // Check if the identity has credentials in its content multimap.
     if (!identity.identity.contentmultimap || !identity.identity.contentmultimap[credentialKey]) {
-      return []; // No credentials found.
+      return [];
     }
 
     const credentialEntries = identity.identity.contentmultimap[credentialKey];
     const credentials = [];
     
     for (const entry of credentialEntries) {
-      if (entry[DATA_TYPE_OBJECT_DATADESCRIPTOR.vdxfid]) {
-        const dataDescriptor = entry[DATA_TYPE_OBJECT_DATADESCRIPTOR.vdxfid];
-        
-        // Decrypt the data descriptor using the viewing key.
-        try {
-          const decryptedData = await api.native.decrypt_data(
-            coin,
-            {
-              datadescriptor: dataDescriptor,
-              evk: viewingKey
-            }
-          );
+      // Convert single univalues to an array to make the processing consistent.
+      const entriesToProcess = Array.isArray(entry) ? entry : [entry];
+      
+      for (const singleEntry of entriesToProcess) {
+        if (singleEntry[DATA_TYPE_OBJECT_DATADESCRIPTOR.vdxfid]) {
+          const dataDescriptor = singleEntry[DATA_TYPE_OBJECT_DATADESCRIPTOR.vdxfid];
           
-          // The data descriptor is in a list.
-          if (decryptedData && Array.isArray(decryptedData)) {
-            const credObj = decryptedData[0];
-            const cred = parseCredential(credObj);
-            credentials.push(cred);
+          try {
+            const decryptedData = await api.native.decrypt_data(
+              coin,
+              {
+                datadescriptor: dataDescriptor,
+                evk: viewingKey
+              }
+            );
+            
+            // The data descriptor is in a list.
+            if (decryptedData && Array.isArray(decryptedData)) {
+              const credObj = decryptedData[0];
+              const cred = parseCredential(credObj);
+              credentials.push(cred);
+            }
+          } catch (err) {
+            console.error(`Failed to decrypt credential: ${err.message}`);
+            // Decrypt the other credentials even if one fails.
           }
-        } catch (err) {
-          console.error(`Failed to decrypt credential: ${err.message}`);
-          // Decrypt the other credentials even if one fails.
         }
       }
     }
@@ -139,7 +142,6 @@ module.exports = (api) => {
         credentialsMap[mainScope] = [];
       }
       
-      // Using a set to track duplicates for efficient lookup.
       if (!seenCredentials[mainScope]) {
         seenCredentials[mainScope] = new Set();
       }
