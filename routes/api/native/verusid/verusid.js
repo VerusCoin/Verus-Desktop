@@ -7,6 +7,7 @@ module.exports = (api) => {
   // Identity
   require('./identity/verifyIdentityUpdateRequest')(api);
   require('./identity/executeIdentityUpdateRequest')(api);
+  require('./identity/signIdentityUpdateResponse')(api);
   
   // Login
   require('./login/verifyRequest')(api);
