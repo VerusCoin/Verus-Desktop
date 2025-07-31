@@ -4,6 +4,8 @@ const {
   LOGIN_CONSENT_WEBHOOK_VDXF_KEY,
   LOGIN_CONSENT_REDIRECT_VDXF_KEY,
   LoginConsentResponse,
+  IDENTITY_UPDATE_RESPONSE_VDXF_KEY,
+  ResponseUri,
 } = require("verus-typescript-primitives");
 const { pushMessage } = require('../../../ipc/ipc');
 const { ReservedPluginTypes } = require('../../utils/plugin/builtin');
@@ -14,36 +16,68 @@ const base64url = require('base64url');
 module.exports = (api) => {
   api.loginConsentUi = {}
 
-  api.loginConsentUi.handle_redirect = (response, redirectinfo) => {
-    const { vdxfkey, uri } = redirectinfo
+  api.loginConsentUi.handle_redirect = (responseKey, response, redirectinfo) => {
+    const { type, uri } = redirectinfo;
 
-    const handlers = {
-      [LOGIN_CONSENT_WEBHOOK_VDXF_KEY.vdxfid]: async () => {
-        return await axios.post(
-          uri,
-          response
-        );
-      },
-      [LOGIN_CONSENT_REDIRECT_VDXF_KEY.vdxfid]: () => {
-        const url = new URL(uri)
+    let processedType = type;
 
-        // Prevent opening any urls that don't go to the browser.
-        if (!['https:', 'http:'].includes(url.protocol)) {
-          return null;
-        } 
-
-        const res = new LoginConsentResponse(response)
-        url.searchParams.set(
-          LOGIN_CONSENT_RESPONSE_VDXF_KEY.vdxfid,
-          base64url(res.toBuffer())
-        );
-        
-        shell.openExternal(url.toString())
-        return null
-      }
+    // Type can either be a string vdxfkey or a BN converted into a number.
+    const usesResponseUri = responseKey === IDENTITY_UPDATE_RESPONSE_VDXF_KEY.vdxfid;
+    if (usesResponseUri) {
+      const responseUri = ResponseUri.fromJson(redirectinfo);
+      processedType = responseUri.type;
     }
 
-    return handlers[vdxfkey] == null ? null : handlers[vdxfkey]();
+    const post = async () => {
+      return await axios.post(
+          uri,
+          response
+      );
+    };
+
+    const redirect = async () => {
+      const url = new URL(uri);
+
+      // Prevent opening any urls that don't go to the browser for security reasons.
+      if (!['https:', 'http:'].includes(url.protocol)) {
+        return null;
+      }
+
+      let res;
+
+      switch (responseKey) {
+        case LOGIN_CONSENT_RESPONSE_VDXF_KEY.vdxfid:
+          res = new LoginConsentResponse(response)
+          break;
+
+        case IDENTITY_UPDATE_RESPONSE_VDXF_KEY.vdxfid:
+          // Always convert from JSON when handling Identity Update Responses
+          // since they need to be sent as JSON from the plugin to avoid
+          // issues with the response being malformed.
+          res = IdentityUpdateResponse.fromJson(response);
+          break;
+
+        default:
+          throw new Error(`Unsupported response key for redirecting: ${responseKey}`);
+      }
+
+      url.searchParams.set(
+        responseKey,
+        base64url(res.toBuffer())
+      );
+
+      shell.openExternal(url.toString());
+      return null;
+    };
+
+    const handlers = {
+      [LOGIN_CONSENT_WEBHOOK_VDXF_KEY.vdxfid]: post,
+      [LOGIN_CONSENT_REDIRECT_VDXF_KEY.vdxfid]: redirect,
+      [ResponseUri.TYPE_POST]: post,
+      [ResponseUri.TYPE_REDIRECT]: redirect,
+    };
+
+    return handlers[processedType] == null ? null : handlers[processedType]();
   }
 
   api.loginConsentUi.deeplink = async (
@@ -57,8 +91,13 @@ module.exports = (api) => {
           true,
           (data) => {
             try {
-              if (data.redirect) api.loginConsentUi.handle_redirect(data.response, data.redirect);
-
+              if (data.redirect) {
+                api.loginConsentUi.handle_redirect(
+                  data.responseKey,
+                  data.response,
+                  data.redirect
+                );
+              } 
               resolve(data.response);
             } catch(e) {
               reject(e)

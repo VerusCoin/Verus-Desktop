@@ -1,6 +1,4 @@
 const { dialog } = require('electron')
-const { URL } = require('url');
-const { SUPPORTED_DLS, CALLBACK_HOST } = require('../api/utils/constants/supported_dls');
 
 function openurlhandler(event, urlstring, apihandler) {
   try {

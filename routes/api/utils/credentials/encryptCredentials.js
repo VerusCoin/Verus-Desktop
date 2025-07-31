@@ -15,8 +15,6 @@ const encryptCredentialsInContentMultiMap = async (
 ) => {
   for (const [key, valueArray] of contentmultimap.kv_content.entries()) {
     if (key === IDENTITY_CREDENTIALS.vdxfid) {
-      console.log("Found IDENTITY_CREDENTIALS key:", key);
-      
       for (let i = 0; i < valueArray.length; i++) {
         const vdxfUniValue = valueArray[i];
         for (const valueObj of vdxfUniValue.values) {
