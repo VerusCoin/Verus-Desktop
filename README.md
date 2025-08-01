@@ -1,109 +1,181 @@
-# Verus Desktop Wallet
+# Verus Desktop
 
-The Verus Multicoin Wallet and Ecosystem GUI
+The Verus Multicoin Wallet and Ecosystem desktop application
 
-## Build & Installation
+## Development Prerequisites
 
-### Prerequisites
+### Required Software
 
 1) [Node.js](https://nodejs.org/en/download/)
     - **Note:** Node.js 20.x is recommended. Node.js 22 and higher are **not supported**
 2) [Yarn](https://yarnpkg.com/getting-started/install)
 3) [Git](https://git-scm.com/)
+4) [Verus CLI](https://verus.io/wallet)  (`verus` and `verusd` binaries)
 
-### Getting the Code
+### Cloning the Repository and Optional Plugins
 
 Clone the Verus Desktop repository and the GUI submodule:
 ```bash
-git clone --recursive --branch master https://github.com/VerusCoin/Verus-Desktop
+git clone --recursive https://github.com/VerusCoin/Verus-Desktop
 ```
 
-### Verus Desktop GUI Setup
+#### Optional Plugins
 
-The GUI requires the `NODE_OPTIONS=--openssl-legacy-provider` environment variable.
-
-**Note:** This variable is only for building the GUI, not for running Verus Desktop. It will cause an error when trying to run Verus Desktop.
-
-
-Open a new terminal window or tab and run:
+The [Verus Login Consent Client](https://github.com/VerusCoin/verus-login-consent-client) is needed to handle deeplinks, including login.
 ```bash
-export NODE_OPTIONS=--openssl-legacy-provider
-cd Verus-Desktop/gui/Verus-Desktop-GUI/react/
-yarn install
-yarn build
+git clone https://github.com/VerusCoin/verus-login-consent-client.git
 ```
 
-This will build the GUI for later use.
-
-**Continue the next steps in a new terminal window or tab to avoid issues with the environment variable.**
+The [Verus PBaaS visualizer](https://github.com/VerusCoin/verus-pbaas-visualizer) provides PBaaS network Visualizations in 3d graphs.
+```bash
+git clone https://github.com/VerusCoin/verus-pbaas-visualizer.git
+```
 
 ### Verus Desktop Setup
 
-To set up Verus Desktop, you’ll need to add the required binaries and any plugins you wish to use.
+From the Verus Desktop directory, create the following folder structure for your operating system:
 
-#### Verus Daemon
+| Operating System | Path                       |
+|------------------|----------------------------|
+| Linux            | `assets/bin/linux64/verusd`|
+| macOS            | `assets/bin/osx/verusd`    |
+| Windows          | `assets/bin/win64/verusd`  |
 
-Verus Desktop needs the Verus CLI binaries. You can download them from [https://verus.io/wallet](https://verus.io/wallet).
+Copy both `verus` and `verusd` binaries into the appropriate folder (e.g. `assets/bin/linux64/verusd/`).
 
-From the `Verus-Desktop` directory, create the following folder structure for your operating system:
+## Running
 
-- **Linux**: `assets/bin/linux64/verusd`
-- **macOS**: `assets/bin/osx/verusd`
-- **Windows**: `assets/bin/win64/verusd`
+Verus Desktop can be run without building to allow for easier development or with building to test for production before packaging the app.
 
-Copy both `verusd` and `verus-cli` into the appropriate folder (e.g. `assets/bin/linux64/verusd/`).
+**Important:** Both the GUI and the PBaaS visualizer require the `NODE_OPTIONS=--openssl-legacy-provider` environment variable. This environment variable will cause an error when trying to run Verus Desktop. Make sure to use a **separate terminal** for the GUI and PBaaS visualizer.
 
-#### Plugins
+### Development Mode (Without Building)
 
-There are two built-in plugins:
+#### GUI
 
-- [Verus Login Consent Client](https://github.com/VerusCoin/verus-login-consent-client)
-- [Verus PBaaS Visualizer](https://github.com/VerusCoin/verus-pbaas-visualizer)
+Open a new terminal in the Verus Desktop directory:
+```bash
+export NODE_OPTIONS=--openssl-legacy-provider
+cd gui/Verus-Desktop-GUI/react/
+yarn install
+```
 
-To add these plugins to Verus Desktop
+You can run the GUI in two ways.
 
-1. Clone them anywhere on your system:
+1. Without plugins:
     ```bash
-    git clone https://github.com/VerusCoin/verus-login-consent-client
-    git clone https://github.com/VerusCoin/verus-pbaas-visualizer
+    yarn start
     ```
 
-2. Generate builds:
+2. With plugins:
     ```bash
-    yarn install
-    yarn build
+    yarn start-no-dashboard
     ```
-    This will generate a `/build` directory inside each plugin project.
 
-3. Create the following folders in your Verus Desktop project:
-    - `Verus-Desktop/assets/plugins/builtin/verus-login-consent-client/`
-    - `Verus-Desktop/assets/plugins/builtin/verus-pbaas-visualizer/`
+#### Optional: PBaaS visualizer
 
-    Then copy the contents of each plugin's `/build` directory into its corresponding folder. 
-    
-    For example, copy all the files from `verus-login-consent-client/build/` into `Verus-Desktop/assets/plugins/builtin/verus-login-consent-client/`.
-
-
-The plugins are now ready to use.
-
-### Starting Verus Desktop
-
-From the root directory, run:
-```shell
+Open a new terminal, navigate to the PBaaS visualizer directory:
+```bash
+export NODE_OPTIONS=--openssl-legacy-provider
 yarn install
 yarn start
 ```
 
-This will start the application.
+#### Optional: Login Consent Client 
 
-### Bundling & Packaging:
+Open a new terminal, navigate to the Login Consent Client directory:
+```bash
+yarn install
+yarn start
+```
 
-To create a packaged application, run:
+#### Desktop
+
+With the GUI and any optional plugins running, navigate to the Verus Desktop directory:
+```bash
+yarn install
+yarn start devmode
+```
+
+#### Debugging
+
+- If you see a blank white window after starting the desktop application, check if the GUI is running.
+- If the GUI or PBaaS visualizer fails to start and you get this error:
+    
+    `Error: error:0308010C:digital envelope routines::unsupported`
+    
+    This indicates that the required environment variable is not set.
+- If the GUI or PBaaS visualizer fails to start and you get this error:
+
+    `Error: listen EADDRINUSE: address already in use :::9838`
+
+    Then run the GUI with `yarn start-no-dashboard` to avoid dashboard conflicts.
+
+- If you get a blank white window after trying to open the PBaaS visualizer, check if the PBaaS visualizer is running.
+- If you get a smaller blank white window after using a deeplink, check if the Login Consent Client is running.
+
+### Production Mode (With Building)
+
+#### GUI
+
+Open a new terminal in the Verus Desktop directory:
+```bash
+export NODE_OPTIONS=--openssl-legacy-provider
+cd gui/Verus-Desktop-GUI/react/
+yarn build
+```
+
+#### Optional: PBaaS visualizer
+
+Open a new terminal, navigate to the PBaaS visualizer directory:
+```bash
+export NODE_OPTIONS=--openssl-legacy-provider
+yarn install
+yarn build
+```
+
+After building, you will find the plugin files in the `/build` directory. Create the folder `assets/plugins/builtin/verus-pbaas-visualizer/` inside your Verus Desktop directory and copy the build files into it.
+
+#### Optional: Login Consent Client 
+
+Open a new terminal, navigate to the Login Consent Client directory:
+```bash
+yarn install
+yarn build
+```
+
+After building, you will find the plugin files in the `/build` directory. Create the folder `assets/plugins/builtin/verus-login-consent-client/` inside your Verus Desktop directory and copy the build files into it.
+
+#### Desktop
+
+With the GUI and any optional plugins built, navigate to the Verus Desktop directory:
+```bash
+yarn install
+yarn start
+```
+
+#### Debugging
+
+- If you see a blank white window after starting the desktop application, the GUI needs to be built.
+- If the GUI or PBaaS visualizer fails to build and you get this error:
+    
+    `Error: error:0308010C:digital envelope routines::unsupported`
+    
+    This indicates that the required environment variable is not set.
+- If you get a blank white window after trying to open the PBaaS visualizer, the PBaaS visualizer needs to be built.
+- If you get a smaller blank white window after using a deeplink, the Login Consent Client needs to be built.
+
+
+## Packaging
+
+Build all dependencies, including the GUI and any optional plugins, before packaging the application. See [Production Mode (With Building)](#production-mode-with-building) for how to build. 
+
+Package the application:
 ```shell
 yarn run dist
 ```
 
-The packaged application will be built and packaged based on your operating system, and located in the `/dist` directory:
+The packaged application will be packaged based on your operating system, and located in the `/dist` directory.
 | Operating System | Output File Type |
 |------------------|------------------|
 | Linux            | `.AppImage`      |
@@ -111,5 +183,3 @@ The packaged application will be built and packaged based on your operating syst
 | Windows          | `.exe`           |
 
 For more detailed information about the build process, see the original [electron-builder](https://www.electron.build) website.
-
-
