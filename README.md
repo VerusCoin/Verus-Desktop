@@ -7,7 +7,7 @@ The Verus Multicoin Wallet and Ecosystem desktop application
 ### Required Software
 
 1) [Node.js](https://nodejs.org/en/download/)
-    - **Note:** Node.js 20.x is recommended. Node.js 22 and higher are **not supported**
+    - **Note:** Node.js 20.x is recommended. Node.js 22 and higher are **not supported**.
 2) [Yarn](https://yarnpkg.com/getting-started/install)
 3) [Git](https://git-scm.com/)
 4) [Verus CLI](https://verus.io/wallet)  (`verus` and `verusd` binaries)
@@ -20,6 +20,8 @@ git clone --recursive https://github.com/VerusCoin/Verus-Desktop
 ```
 
 #### Optional Plugins
+
+Optional plugins can be cloned into the same directory level as the Verus Desktop folder.
 
 The [Verus Login Consent Client](https://github.com/VerusCoin/verus-login-consent-client) is needed to handle deeplinks, including login.
 ```bash
@@ -35,11 +37,11 @@ git clone https://github.com/VerusCoin/verus-pbaas-visualizer.git
 
 From the Verus Desktop directory, create the following folder structure for your operating system:
 
-| Operating System | Path                       |
-|------------------|----------------------------|
-| Linux            | `assets/bin/linux64/verusd`|
-| macOS            | `assets/bin/osx/verusd`    |
-| Windows          | `assets/bin/win64/verusd`  |
+| Operating System | Path                        |
+|------------------|-----------------------------|
+| Linux            | `assets/bin/linux64/verusd/`|
+| macOS            | `assets/bin/osx/verusd/`    |
+| Windows          | `assets/bin/win64/verusd/`  |
 
 Copy both `verus` and `verusd` binaries into the appropriate folder (e.g. `assets/bin/linux64/verusd/`).
 
@@ -122,6 +124,7 @@ Open a new terminal in the Verus Desktop directory:
 ```bash
 export NODE_OPTIONS=--openssl-legacy-provider
 cd gui/Verus-Desktop-GUI/react/
+yarn install
 yarn build
 ```
 

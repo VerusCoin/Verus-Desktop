@@ -44,7 +44,7 @@ module.exports = (api) => {
     
     const viewingKey = keys.extendedviewingkey;
     
-    // Generate the credential key using the viewing key
+    // Generate the credential key using the viewing key.
     const credentialKeyResult = await api.native.get_vdxf_id(
       coin,
       "vrsc::identity.credentials", 
