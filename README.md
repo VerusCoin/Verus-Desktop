@@ -45,6 +45,10 @@ From the Verus Desktop directory, create the following folder structure for your
 
 Copy both `verus` and `verusd` binaries into the appropriate folder (e.g. `assets/bin/linux64/verusd/`).
 
+#### Deeplinks
+
+Deeplinks require running a production build at least once. After that, you can run Verus Desktop in any mode and still have the deeplinks functional.
+
 ## Running
 
 Verus Desktop can be run without building to allow for easier development or with building to test for production before packaging the app.
