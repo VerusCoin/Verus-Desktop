@@ -205,6 +205,7 @@ api = require('./api/dlhandler.js')(api);
 api = require('./api/utility_apis/csvExport.js')(api);
 api = require('./api/utility_apis/pbaas')(api);
 api = require('./api/utility_apis/checkUpdates')(api);
+api = require('./api/utility_apis/deeplinkSetup')(api);
 api = require('./api/utility_apis/cache')(api);
 
 // kv

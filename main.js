@@ -565,7 +565,20 @@ if (!hasLock) {
 
   // Deep linking
   if (!appConfig.general.main.disableDeeplink) {
-    api.log("setting up deeplink", "init");
+    api.log("setting up deeplink", "init");   
+    try {
+      api.installLinuxDeeplinkIntegration()
+        .then(() => {
+          api.log("deeplink integration created", "init");
+        })
+        .catch((e) => {
+          api.log("deeplink integration failed", "init");
+          api.log(e, "init");
+        });
+    } catch (e) {
+      api.log("deeplink integration failed", "init");
+      api.log(e, "init");
+    }
     setuplink(app);
   } else {
     api.log("removing deeplink", "init");
