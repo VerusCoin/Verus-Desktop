@@ -66,13 +66,22 @@ async function installIcons(squashRoot) {
   }
 }
 
+// Moves the desktop file from the extracted AppImage, modifies the execution so
+// that it works for electron, and returns the contents and path of the file.
 async function installDesktopFile(squashRoot, appImage) {
   const appsDir = path.join(xdgDataHome(), 'applications');
   await fs.mkdirp(appsDir);
-  const desktopFile = path.join(appsDir, 'verus-desktop-testnet.desktop');
-
-  // Find the desktop file in the extracted AppImage.
-  const sourceDesktopFile = path.join(squashRoot, 'verus-desktop-testnet.desktop');
+  
+  // Find the desktop file in the extracted AppImage dynamically.
+  const files = await fs.readdir(squashRoot);
+  const desktopFileName = files.find(file => file.endsWith('.desktop'));
+  
+  if (!desktopFileName) {
+    throw new Error('No desktop file found in AppImage');
+  }
+  
+  const desktopFile = path.join(appsDir, desktopFileName);
+  const sourceDesktopFile = path.join(squashRoot, desktopFileName);
   
   if (!(await fs.pathExists(sourceDesktopFile))) {
     throw new Error(`Desktop file not found in AppImage at ${sourceDesktopFile}`);
@@ -106,7 +115,7 @@ async function installDesktopFile(squashRoot, appImage) {
 
   await fs.writeFile(desktopFile, desktopFileContent, { mode: 0o644 });
   
-  return desktopFileContent;
+  return { content: desktopFileContent, path: desktopFile };
 }
 
 async function registerDesktopFile(desktopFileName, desktopFileContent) {
@@ -135,13 +144,8 @@ module.exports = (api) => {
   api.installLinuxDeeplinkIntegration = async () => {
     if (process.platform !== 'linux') return;
 
-    // Skip the integration if desktop file already exists.
-    const appsDir = path.join(xdgDataHome(), 'applications');
-    const desktopFileLocation = path.join(appsDir, 'verus-desktop-testnet.desktop');
-    
-    if (await fs.pathExists(desktopFileLocation)) {
-      return;
-    }
+    // Always run the integration so that if the appimage moves or a new version is being used,
+    // the user will always have a working integration.
 
     const appImage = process.env.APPIMAGE;
     
@@ -155,8 +159,8 @@ module.exports = (api) => {
     try {
       const squashRoot = await extractAppImage(appImage, tmpBase);
       await installIcons(squashRoot);
-      const desktopFileContent = await installDesktopFile(squashRoot, appImage);
-      await registerDesktopFile(desktopFileLocation, desktopFileContent);
+      const desktopFileResult = await installDesktopFile(squashRoot, appImage);
+      await registerDesktopFile(desktopFileResult.path, desktopFileResult.content);
     } finally {
       await fs.remove(tmpBase);
     }
