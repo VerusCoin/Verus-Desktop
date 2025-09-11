@@ -22,7 +22,7 @@ The steps for the encryption process are as follows.
     
     <details><summary>Example:</summary>
 
-    ```json
+    ```bash
     z_getencryptionaddress '{
       "address": "zs1ztll53sh8dst9utln6vl6vn7fv2zdayxhk58rd7casqhemuh5fwymv8q86g9cf670g3wsge573w",
       "fromid": "CredentialTester@",
@@ -47,7 +47,7 @@ The steps for the encryption process are as follows.
     
     <details><summary>Example:</summary>
 
-    ```json
+    ```bash
     signdata '{
       "address":"CredentialTester@",
       "vdxfdata": {
@@ -80,7 +80,7 @@ The steps for the encryption process are as follows.
 
     <details><summary>Example:</summary>
 
-    ```json
+    ```bash
     getvdxfid vrsc::identity.credentials '{"vdxfkey":"zxviews1qde7tnnvqqqqpqy03gsmqjumlyg0ck25hh9etcf7h4l56kunlcjtr36e4pkr32kftw650890j009cdhgm2lc23uyrrq5g7xp5cspjy6lnwf9uk96pv9yruewfrz6k8q0gy9w065cellk3pt37s0ps90rc2zwj4h46f82h35sk23kxduuewc26673fam042zfazxn5r9zwaytcdhc3r50vrutvnnw4zxdalpw2s0w40nxu7qkgh3x3duha872ckhwt9fcl5uy7ne0d3gwknyp2"}'
     ```
     ```json
@@ -105,7 +105,7 @@ The steps for the encryption process are as follows.
 
     <details><summary>Example:</summary>
 
-    ```json
+    ```bash
     updateidentity '{     
       "name": "CredentialTester@",
       "contentmultimap": {
@@ -140,7 +140,7 @@ The steps for the decryption process are as follows.
     
     <details><summary>Example:</summary>
 
-    ```json
+    ```bash
     z_getencryptionaddress '{
       "address": "zs1ztll53sh8dst9utln6vl6vn7fv2zdayxhk58rd7casqhemuh5fwymv8q86g9cf670g3wsge573w",
       "fromid": "CredentialTester@",
@@ -166,7 +166,7 @@ The steps for the decryption process are as follows.
 
     <details><summary>Example:</summary>
 
-    ```json
+    ```bash
     getvdxfid vrsc::identity.credentials '{"vdxfkey":"zxviews1qde7tnnvqqqqpqy03gsmqjumlyg0ck25hh9etcf7h4l56kunlcjtr36e4pkr32kftw650890j009cdhgm2lc23uyrrq5g7xp5cspjy6lnwf9uk96pv9yruewfrz6k8q0gy9w065cellk3pt37s0ps90rc2zwj4h46f82h35sk23kxduuewc26673fam042zfazxn5r9zwaytcdhc3r50vrutvnnw4zxdalpw2s0w40nxu7qkgh3x3duha872ckhwt9fcl5uy7ne0d3gwknyp2"}'
     ```
     ```json
@@ -194,7 +194,7 @@ The steps for the decryption process are as follows.
 
     <details><summary>Example:</summary>
 
-    ```json
+    ```bash
     getidentitycontent CredentialTester@
     ```
     ```json
@@ -220,7 +220,7 @@ The steps for the decryption process are as follows.
 
     <details><summary>Example:</summary>
 
-    ```json
+    ```bash
     decryptdata '{
       "datadescriptor": {
           "version": 1,
