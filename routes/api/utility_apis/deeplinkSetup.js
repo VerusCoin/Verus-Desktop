@@ -59,10 +59,18 @@ async function installIcons(squashRoot) {
   }
 
   if (iconsCopied > 0) {
-    // Caching is not necessary for the icons to work, but would be ideal.
-    try {
-      await run(`gtk-update-icon-cache -f "${hicolorBase}"`, { maxBuffer: MAX_BUFFER_SIZE });
-    } catch {}
+    // Update icon caches if possible.
+    const iconCacheCommands = [
+      `gtk-update-icon-cache-3.0 -t "${hicolorBase}"`,
+      `gtk-update-icon-cache -f "${hicolorBase}"`,
+      `update-icon-caches "${path.dirname(hicolorBase)}"`
+    ];
+    
+    for (const command of iconCacheCommands) {
+      try {
+        await run(command, { maxBuffer: MAX_BUFFER_SIZE });
+      } catch {}
+    }
   }
 }
 
@@ -136,8 +144,21 @@ async function registerDesktopFile(desktopFileName, desktopFileContent) {
   // Create the desktop integration.
   await run(`update-desktop-database "${appsDir}"`, { maxBuffer: MAX_BUFFER_SIZE });
   for (const mimeType of mimeTypes) {
-    await run(`xdg-mime default "${path.basename(desktopFileName)}" "${mimeType}"`, { maxBuffer: MAX_BUFFER_SIZE });
+    try {
+      await run(`xdg-mime default "${path.basename(desktopFileName)}" "${mimeType}"`, { maxBuffer: MAX_BUFFER_SIZE });
+    } catch {}
   }
+  
+  // Update MIME database.
+  try {
+    const mimeDir = path.join(xdgDataHome(), 'mime');
+    await run(`update-mime-database "${mimeDir}"`, { maxBuffer: MAX_BUFFER_SIZE });
+  } catch {}
+
+  // Force update desktop menu.
+  try {
+    await run(`xdg-desktop-menu forceupdate`, { maxBuffer: MAX_BUFFER_SIZE });
+  } catch {}
 }
 
 module.exports = (api) => {
