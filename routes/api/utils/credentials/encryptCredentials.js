@@ -10,7 +10,7 @@ const encryptCredentialsInContentMultiMap = async (
   coin,
   address,
   contentmultimap,
-  viewingKey,
+  ivk,
   encryptionAddress
 ) => {
   for (const [key, valueArray] of contentmultimap.kv_content.entries()) {
@@ -39,11 +39,11 @@ const encryptCredentialsInContentMultiMap = async (
           }
         }
       }
-      // Replace the credentials key with an obfuscated key.
+      // Replace the credentials key with a hashed key.
       const credentialKeyResult = await api.native.get_vdxf_id(
         coin,
         "vrsc::identity.credentials", 
-        { vdxfkey: viewingKey }
+        { uint256: ivk }
       );
       
       if (!credentialKeyResult || !credentialKeyResult.vdxfid) {

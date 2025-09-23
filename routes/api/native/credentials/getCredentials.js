@@ -38,17 +38,18 @@ module.exports = (api) => {
       }
     );
     
-    if (!keys || !keys.extendedviewingkey) {
+    if (!keys || !keys.extendedviewingkey || !keys.ivk) {
       throw new Error(`Failed to get keys for ${address}`);
     }
     
-    const viewingKey = keys.extendedviewingkey;
+    const evk = keys.extendedviewingkey;
+    const ivk = keys.ivk;
     
-    // Generate the credential key using the viewing key.
+    // Generate the credential key using the ivk.
     const credentialKeyResult = await api.native.get_vdxf_id(
       coin,
       "vrsc::identity.credentials", 
-      { vdxfkey: viewingKey }
+      { uint256: ivk }
     );
     
     if (!credentialKeyResult || !credentialKeyResult.vdxfid) {
@@ -77,7 +78,7 @@ module.exports = (api) => {
               coin,
               {
                 datadescriptor: dataDescriptor,
-                evk: viewingKey
+                evk: evk
               }
             );
             

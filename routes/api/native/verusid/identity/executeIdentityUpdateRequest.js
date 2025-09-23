@@ -28,7 +28,10 @@ module.exports = (api) => {
       }
     );
 
-    if (!encryptionAddressInfo || !encryptionAddressInfo.extendedviewingkey || !encryptionAddressInfo.address) {
+    if (!encryptionAddressInfo
+      || !encryptionAddressInfo.address
+      || !encryptionAddressInfo.ivk
+    ) {
       throw new Error(`Failed to get the personal encryption address for ${address}`);
     }
 
@@ -40,7 +43,7 @@ module.exports = (api) => {
         coin,
         address,
         contentmultimap,
-        encryptionAddressInfo.extendedviewingkey,
+        encryptionAddressInfo.ivk,
         encryptionAddressInfo.address
       );
     }

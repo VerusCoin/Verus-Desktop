@@ -6,7 +6,7 @@ The encryption and decryption processes are works in progress.
 
 ## Notes
 
-1. For encrypting and storing data to be accessed only by a specific identity (e.g., yourself), the `fromid` and `toid` both must match that identity.
+1. For encrypting and storing data to be accessed only by a specific identity (e.g., yourself), both the `fromid` and `toid` must match that identity.
 2. For the encryption and decryption processes, an identity with a z-address is needed. 
 
 ## Encryption Process
@@ -18,7 +18,7 @@ The steps for the encryption process are as follows.
       - `fromid`: the identity's address (e.g., `CredentialTester@`)
       - `toid`: the same identity's address
 
-    The result should contain the z-address that will be used to encrypt the credential and its corresponding extended viewing key.
+    The result should contain the z-address that will be used to encrypt the credential and its corresponding incoming viewing key (ivk).
     
     <details><summary>Example:</summary>
 
@@ -32,7 +32,8 @@ The steps for the encryption process are as follows.
     ```json
     {
       "address": "zs1x49g3lkt93udlnnc8y5k7p5n0vlvqa2r2rsmsj2629hfvwljpn39mltsxy0fktp5ue46wlw3mlc",
-      "extendedviewingkey": "zxviews1qde7tnnvqqqqpqy03gsmqjumlyg0ck25hh9etcf7h4l56kunlcjtr36e4pkr32kftw650890j009cdhgm2lc23uyrrq5g7xp5cspjy6lnwf9uk96pv9yruewfrz6k8q0gy9w065cellk3pt37s0ps90rc2zwj4h46f82h35sk23kxduuewc26673fam042zfazxn5r9zwaytcdhc3r50vrutvnnw4zxdalpw2s0w40nxu7qkgh3x3duha872ckhwt9fcl5uy7ne0d3gwknyp2"
+      "extendedviewingkey": "zxviews1qde7tnnvqqqqpqy03gsmqjumlyg0ck25hh9etcf7h4l56kunlcjtr36e4pkr32kftw650890j009cdhgm2lc23uyrrq5g7xp5cspjy6lnwf9uk96pv9yruewfrz6k8q0gy9w065cellk3pt37s0ps90rc2zwj4h46f82h35sk23kxduuewc26673fam042zfazxn5r9zwaytcdhc3r50vrutvnnw4zxdalpw2s0w40nxu7qkgh3x3duha872ckhwt9fcl5uy7ne0d3gwknyp2",
+      "ivk": "f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"
     }
     ```
     </details>
@@ -72,28 +73,28 @@ The steps for the encryption process are as follows.
     </details>
 
 
-3.  Hash `vrsc::identity.credentials` with the extended viewing key using `getvdxfid` with
+3.  Hash the vdxfkey corresponding to `vrsc::identity.credentials` with the ivk using `getvdxfid` with
       - `vrsc::identity.credentials`
-      - `vdxfkey`: the extended viewing key
+      - `uint256`: the ivk
 
     Get the `vdxfid` in the result for the next step.
 
     <details><summary>Example:</summary>
 
     ```bash
-    getvdxfid vrsc::identity.credentials '{"vdxfkey":"zxviews1qde7tnnvqqqqpqy03gsmqjumlyg0ck25hh9etcf7h4l56kunlcjtr36e4pkr32kftw650890j009cdhgm2lc23uyrrq5g7xp5cspjy6lnwf9uk96pv9yruewfrz6k8q0gy9w065cellk3pt37s0ps90rc2zwj4h46f82h35sk23kxduuewc26673fam042zfazxn5r9zwaytcdhc3r50vrutvnnw4zxdalpw2s0w40nxu7qkgh3x3duha872ckhwt9fcl5uy7ne0d3gwknyp2"}'
+    getvdxfid vrsc::identity.credentials '{"uint256":"f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"}'
     ```
     ```json
     {
-      "vdxfid": "iAkLK2ruEUhZxH9Wy45W8XKGfbeUUg5Bp8",
-      "indexid": "xFaSmqHz5nvEaT2Ypjjf6uqohFfVGyMb1c",
-      "hash160result": "86a4deebbaecab2da5c8547b2fda278c8d40c64f",
+      "vdxfid": "iQyAw5u3ri95RT3nZsRpPy1MVj18bdreHK",
+      "indexid": "xVoHPtL8i2Mk3cvpRZ5yNMXtXP29ZL4AMN",
+      "hash160result": "c9b30b4a009f0099e414f4b40e38e9178997c5eb",
       "qualifiedname": {
         "namespace": "i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV",
         "name": "vrsc::identity.credentials"
       },
       "bounddata": {
-        "vdxfkey": "iMArFRJ3bZPg65ttXJdxGub4VbPWYRqBwW"
+        "uint256": "f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"
       }
     }
     ```
@@ -101,7 +102,7 @@ The steps for the encryption process are as follows.
 
 4.  Add the encrypted credential to the contentmultimap using `updateidentity` with
       - `name`: the identity's address
-      - `contentmultimap`: the hashed `vrsc::identity.credentials` key with the data descriptor of the encrypted credential
+      - `contentmultimap`: the hashed vdxfkey from Step 3 with the data descriptor of the encrypted credential
 
     <details><summary>Example:</summary>
 
@@ -109,7 +110,7 @@ The steps for the encryption process are as follows.
     updateidentity '{     
       "name": "CredentialTester@",
       "contentmultimap": {
-        "iAkLK2ruEUhZxH9Wy45W8XKGfbeUUg5Bp8": [
+        "iQyAw5u3ri95RT3nZsRpPy1MVj18bdreHK": [
           {
             "vrsc::data.type.object.datadescriptor": {
               "version": 1,
@@ -136,7 +137,7 @@ The steps for the decryption process are as follows.
 
     This is the same as Step 1 from the [*Encryption Process*](#encryption-process).
 
-    The result should contain a z-address and its corresponding extended viewing key, which will be used to find and decrypt the credential.
+    The result should contain an ivk and extended viewing key (evk), which will be used to find and decrypt the credential.
     
     <details><summary>Example:</summary>
 
@@ -150,15 +151,16 @@ The steps for the decryption process are as follows.
     ```json
     {
       "address": "zs1x49g3lkt93udlnnc8y5k7p5n0vlvqa2r2rsmsj2629hfvwljpn39mltsxy0fktp5ue46wlw3mlc",
-      "extendedviewingkey": "zxviews1qde7tnnvqqqqpqy03gsmqjumlyg0ck25hh9etcf7h4l56kunlcjtr36e4pkr32kftw650890j009cdhgm2lc23uyrrq5g7xp5cspjy6lnwf9uk96pv9yruewfrz6k8q0gy9w065cellk3pt37s0ps90rc2zwj4h46f82h35sk23kxduuewc26673fam042zfazxn5r9zwaytcdhc3r50vrutvnnw4zxdalpw2s0w40nxu7qkgh3x3duha872ckhwt9fcl5uy7ne0d3gwknyp2"
+      "extendedviewingkey": "zxviews1qde7tnnvqqqqpqy03gsmqjumlyg0ck25hh9etcf7h4l56kunlcjtr36e4pkr32kftw650890j009cdhgm2lc23uyrrq5g7xp5cspjy6lnwf9uk96pv9yruewfrz6k8q0gy9w065cellk3pt37s0ps90rc2zwj4h46f82h35sk23kxduuewc26673fam042zfazxn5r9zwaytcdhc3r50vrutvnnw4zxdalpw2s0w40nxu7qkgh3x3duha872ckhwt9fcl5uy7ne0d3gwknyp2",
+      "ivk": "f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"
     }
     ```
     </details>
 
 
-2.  Hash `vrsc::identity.credentials` with the extended viewing key using `getvdxfid` with
+2.  Hash the vdxfkey corresponding to `vrsc::identity.credentials` with the ivk using `getvdxfid` with
       - `vrsc::identity.credentials`
-      - `vdxfkey`: the extended viewing key
+      - `uint256`: the ivk
 
     This is the same as Step 3 from the [*Encryption Process*](#encryption-process).
 
@@ -167,19 +169,19 @@ The steps for the decryption process are as follows.
     <details><summary>Example:</summary>
 
     ```bash
-    getvdxfid vrsc::identity.credentials '{"vdxfkey":"zxviews1qde7tnnvqqqqpqy03gsmqjumlyg0ck25hh9etcf7h4l56kunlcjtr36e4pkr32kftw650890j009cdhgm2lc23uyrrq5g7xp5cspjy6lnwf9uk96pv9yruewfrz6k8q0gy9w065cellk3pt37s0ps90rc2zwj4h46f82h35sk23kxduuewc26673fam042zfazxn5r9zwaytcdhc3r50vrutvnnw4zxdalpw2s0w40nxu7qkgh3x3duha872ckhwt9fcl5uy7ne0d3gwknyp2"}'
+    getvdxfid vrsc::identity.credentials '{"uint256":"f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"}'
     ```
     ```json
     {
-      "vdxfid": "iAkLK2ruEUhZxH9Wy45W8XKGfbeUUg5Bp8",
-      "indexid": "xFaSmqHz5nvEaT2Ypjjf6uqohFfVGyMb1c",
-      "hash160result": "86a4deebbaecab2da5c8547b2fda278c8d40c64f",
+      "vdxfid": "iQyAw5u3ri95RT3nZsRpPy1MVj18bdreHK",
+      "indexid": "xVoHPtL8i2Mk3cvpRZ5yNMXtXP29ZL4AMN",
+      "hash160result": "c9b30b4a009f0099e414f4b40e38e9178997c5eb",
       "qualifiedname": {
         "namespace": "i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV",
         "name": "vrsc::identity.credentials"
       },
       "bounddata": {
-        "vdxfkey": "iMArFRJ3bZPg65ttXJdxGub4VbPWYRqBwW"
+        "uint256": "f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"
       }
     }
     ```
@@ -188,7 +190,7 @@ The steps for the decryption process are as follows.
 3.  Get the `contentmultimap` of the identity using `getidentitycontent` with
       - the identity's address
 
-    This doesn't currently use a `vdxfkey` for selective searching within the `contentmultimap`, but it should in the future.
+    This doesn't currently use a vdxfkey for selective searching within the `contentmultimap`, but it should in the future.
 
     The `contentmultimap` is within the `identity` part of the JSON result.
 
@@ -199,7 +201,7 @@ The steps for the decryption process are as follows.
     ```
     ```json
     "contentmultimap": {
-      "iAkLK2ruEUhZxH9Wy45W8XKGfbeUUg5Bp8": [
+      "iQyAw5u3ri95RT3nZsRpPy1MVj18bdreHK": [
         {
           "i4GC1YGEVD21afWudGoFJVdnfjJ5XWnCQv": {
             "version": 1,
@@ -214,9 +216,9 @@ The steps for the decryption process are as follows.
     </details>
 
 
-4.  Using the hashed key created in Step 2, find the data descriptor of the encrypted credential, and decrypt it using `decryptdata` with
+4.  Using the hashed vdxfkey created in Step 2, find the data descriptor of the encrypted credential, and decrypt it using `decryptdata` with
       - `datadescriptor`: the data descriptor of the encrypted credential
-      - `evk`: the extended viewing key obtained in Step 1
+      - `evk`: the evk obtained in Step 1
 
     <details><summary>Example:</summary>
 

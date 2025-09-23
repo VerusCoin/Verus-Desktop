@@ -5,11 +5,11 @@ module.exports = (api) => {
    * a z-address in the wallet, wallet seed and hdindex, or root key (extended private key).
    * 
    * @param {String} coin The chainTicker of the coin to make the call on
-   * @param {String} arguments The arguments to pass to z_getencryptionaddress
+   * @param {String} args The arguments to pass to z_getencryptionaddress
    */
   api.native.z_get_encryption_address = (
     coin,
-    arguments,
+    args,
   ) => {
     return new Promise((resolve, reject) => {
       api.native
@@ -17,7 +17,7 @@ module.exports = (api) => {
           coin,
           "z_getencryptionaddress",
           [
-            arguments,
+            args,
           ]
         )
       .then(resultObj => {
@@ -32,13 +32,13 @@ module.exports = (api) => {
   api.setPost('/native/z_get_encryption_address', (req, res, next) => {
     const {
       chainTicker,
-      arguments
+      args
     } = req.body;
 
     api.native
       .z_get_encryption_address(
-      chainTicker,
-      arguments
+        chainTicker,
+        args
       )
       .then(resultObj => {
       const retObj = {
