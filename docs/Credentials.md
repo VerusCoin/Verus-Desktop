@@ -18,7 +18,7 @@ The steps for the encryption process are as follows.
       - `fromid`: the identity's address (e.g., `CredentialTester@`)
       - `toid`: the same identity's address
 
-    The result should contain the z-address that will be used to encrypt the credential and its corresponding incoming viewing key (ivk).
+    The result should contain the z-address that will be used to encrypt the credential and the corresponding incoming viewing key (ivk).
     
     <details><summary>Example:</summary>
 
