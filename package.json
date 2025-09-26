@@ -6,11 +6,16 @@
   "main": "main.js",
   "scripts": {
     "start": "cross-env NODE_ENV=development electron .",
+    "start:all": "./scripts/prod.sh",
     "debug": "yarn start devmode",
+    "dev:all": "./scripts/dev.sh",
     "make-patch": "./make-patch.sh",
+    "install:all": "./scripts/setup.sh",
     "pack": "cross-env NODE_ENV=production electron-builder --dir verus-unpacked",
     "dist": "cross-env NODE_ENV=production electron-builder --publish=never  ",
     "dist-win": "cross-env NODE_ENV=production electron-builder --publish=never  --win",
+    "dist:all": "./scripts/create-build.sh",
+    "dist-win:all": "./scripts/create-build-win.sh",
     "test": "mocha",
     "update-agamalib": "rm -rf node_modules/agama-wallet-lib/ && yarn install",
     "postinstall": "rm -rf node_modules/bitgo-utxo-lib/node_modules/create-hash"

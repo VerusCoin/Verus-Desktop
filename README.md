@@ -57,6 +57,14 @@ Verus Desktop can be run without building to allow for easier development or wit
 
 ### Development Mode (Without Building)
 
+On Linux and macOS, run Verus Desktop with plugins in development mode using a single terminal with:
+```bash
+yarn install:all
+yarn dev:all
+```
+
+On Windows, or to run each part separately, follow these steps.
+
 #### GUI
 
 Open a new terminal in the Verus Desktop directory:
@@ -122,6 +130,14 @@ yarn start devmode
 
 ### Production Mode (With Building)
 
+On Linux and macOS, run Verus Desktop with plugins using a single terminal with
+```bash
+yarn install:all
+yarn start:all
+```
+
+On Windows, or to manually build the components and run Verus Desktop, follow these steps.
+
 #### GUI
 
 Open a new terminal in the Verus Desktop directory:
@@ -173,20 +189,46 @@ yarn start
 - If you get a smaller blank white window after using a deeplink, the Login Consent Client needs to be built.
 
 
-## Packaging
+## Creating Builds
+
+| Operating System | File Type  |
+|------------------|------------|
+| Linux            | `.AppImage`|
+| macOS            | `.dmg`     |
+| Windows          | `.exe`     |
+
+To create a build from Linux for Windows, you will need either Wine or a [Docker container](https://www.electron.build/multi-platform-build#to-build-app-for-windows-on-linux)
+
+### Using Linux and macOS
+
+On Linux and macOS, package Verus Desktop with plugins using a single terminal with:
+```bash
+yarn install:all
+yarn dist:all
+```
+
+The packaged application will be packaged based on your operating system, and located in the `/dist` directory.
+
+To create a build for Windows:
+```bash
+yarn install:all
+yarn dist-win:all
+```
+
+### Windows or Manual Builds
+
+To manually build the components and package Verus Desktop, follow these steps.
 
 Build all dependencies, including the GUI and any optional plugins, before packaging the application. See [Production Mode (With Building)](#production-mode-with-building) for how to build. 
 
 Package the application:
 ```shell
-yarn run dist
+yarn dist-win
 ```
 
-The packaged application will be packaged based on your operating system, and located in the `/dist` directory.
-| Operating System | Output File Type |
-|------------------|------------------|
-| Linux            | `.AppImage`      |
-| macOS            | `.dmg`           |
-| Windows          | `.exe`           |
+For manually building on Linux or macOS:
+```shell
+yarn dist
+```
 
 For more detailed information about the build process, see the original [electron-builder](https://www.electron.build) website.
