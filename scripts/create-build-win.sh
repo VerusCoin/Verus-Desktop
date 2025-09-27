@@ -1,6 +1,6 @@
 #!/bin/bash
 
-FULL_PATH=$(dirname "${0}")
+FULL_PATH=$(dirname $0)
 
 ${FULL_PATH}/setup-node.sh
 
