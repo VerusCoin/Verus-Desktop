@@ -42,7 +42,7 @@ const encryptCredentialsInContentMultiMap = async (
       // Replace the credentials key with a hashed key.
       const credentialKeyResult = await api.native.get_vdxf_id(
         coin,
-        "vrsc::identity.credentials", 
+        IDENTITY_CREDENTIALS.vdxfid, 
         { uint256: ivk }
       );
       

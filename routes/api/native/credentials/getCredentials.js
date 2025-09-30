@@ -1,6 +1,7 @@
 const {
   DATA_TYPE_OBJECT_DATADESCRIPTOR,
   fromBase58Check,
+  IDENTITY_CREDENTIALS,
 } = require("verus-typescript-primitives");
 const { parseCredential } = require("../../utils/credentials/parseCredential");
 
@@ -48,7 +49,7 @@ module.exports = (api) => {
     // Generate the credential key using the ivk.
     const credentialKeyResult = await api.native.get_vdxf_id(
       coin,
-      "vrsc::identity.credentials", 
+      IDENTITY_CREDENTIALS.vdxfid, 
       { uint256: ivk }
     );
     
