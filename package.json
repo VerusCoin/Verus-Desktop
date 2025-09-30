@@ -85,7 +85,7 @@
     "systeminformation": "5.23.8",
     "tx-builder": "^0.18.0",
     "unzipper": "0.10.11",
-    "verus-typescript-primitives": "git+https://github.com/VerusCoin/verus-typescript-primitives.git",
+    "verus-typescript-primitives": "git+https://github.com/mcstoer/verus-typescript-primitives.git#credential-key-update",
     "verus-wallet-endpoints": "git+https://github.com/VerusCoin/verus-wallet-endpoints.git",
     "verus_bridgekeeper": "git+https://github.com/VerusCoin/verusbridgekeeper.git",
     "verusd-rpc-ts-client": "git+https://github.com/VerusCoin/verusd-rpc-ts-client",

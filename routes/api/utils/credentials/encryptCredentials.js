@@ -1,5 +1,5 @@
 const {
-  IDENTITY_CREDENTIALS,
+  IDENTITY_CREDENTIAL,
   DATA_TYPE_OBJECT_CREDENTIAL,
   DataDescriptor,
   DATA_TYPE_OBJECT_DATADESCRIPTOR
@@ -14,7 +14,7 @@ const encryptCredentialsInContentMultiMap = async (
   encryptionAddress
 ) => {
   for (const [key, valueArray] of contentmultimap.kv_content.entries()) {
-    if (key === IDENTITY_CREDENTIALS.vdxfid) {
+    if (key === IDENTITY_CREDENTIAL.vdxfid) {
       for (let i = 0; i < valueArray.length; i++) {
         const vdxfUniValue = valueArray[i];
         for (const valueObj of vdxfUniValue.values) {
@@ -42,7 +42,7 @@ const encryptCredentialsInContentMultiMap = async (
       // Replace the credentials key with a hashed key.
       const credentialKeyResult = await api.native.get_vdxf_id(
         coin,
-        IDENTITY_CREDENTIALS.vdxfid, 
+        IDENTITY_CREDENTIAL.vdxfid, 
         { uint256: ivk }
       );
       
@@ -53,7 +53,7 @@ const encryptCredentialsInContentMultiMap = async (
       const credentialKey = credentialKeyResult.vdxfid;
       
       contentmultimap.kv_content.set(credentialKey, valueArray);
-      contentmultimap.kv_content.delete(IDENTITY_CREDENTIALS.vdxfid);
+      contentmultimap.kv_content.delete(IDENTITY_CREDENTIAL.vdxfid);
     }
   }
 };
