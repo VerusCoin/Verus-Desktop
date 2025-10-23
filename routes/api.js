@@ -122,6 +122,7 @@ api = require('./api/plugin/builtin/loginconsentui')(api);
 api = require('./api/plugin/builtin/pbaasvisualizer')(api);
 
 api = require('./api/focus')(api);
+api = require('./api/minimize')(api);
 
 // native
 api = require('./api/native/addrBalance.js')(api);

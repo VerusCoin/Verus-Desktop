@@ -549,6 +549,16 @@ if (!hasLock) {
     }
   }
 
+  function minimizeMain() {
+    if (!mainWindow) {
+      createMainWindow();
+    } else {
+      if (!mainWindow.isMinimized()) {
+        mainWindow.minimize();
+      }
+    }
+  }
+
   function handleSecondInstance(event, argv, cwd) {
     focusMain();
 
@@ -559,6 +569,7 @@ if (!hasLock) {
   }
 
   api.setupFocusApis(focusMain);
+  api.setupMinimizeApis(minimizeMain);
 
   app.on("activate", focusMain);
   app.on("second-instance", handleSecondInstance);

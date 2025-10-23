@@ -29,10 +29,22 @@ module.exports = (api) => {
     }
 
     const post = async () => {
-      return await axios.post(
+      // Add a slight delay to allow the user to see the desktop GUI briefly.
+      setTimeout(() => {
+        api.minimizeApp();
+      }, 250);
+
+      let result
+      try {
+        result = await axios.post(
           uri,
           response
-      );
+        );
+      } catch (e) {
+        console.error(`Failed to post to webhook ${e}`)
+      }
+      
+      return result;
     };
 
     const redirect = async () => {
