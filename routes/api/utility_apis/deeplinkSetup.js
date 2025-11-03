@@ -87,8 +87,7 @@ async function installDesktopFile(squashRoot, appImage) {
   if (!desktopFileName) {
     throw new Error('No desktop file found in AppImage');
   }
-  
-  const desktopFile = path.join(appsDir, desktopFileName);
+
   const sourceDesktopFile = path.join(squashRoot, desktopFileName);
   
   if (!(await fs.pathExists(sourceDesktopFile))) {
@@ -96,6 +95,9 @@ async function installDesktopFile(squashRoot, appImage) {
   }
 
   let desktopFileContent = await fs.readFile(sourceDesktopFile, 'utf8');
+  let adjustedDesktopFileName = desktopFileName;
+
+  const desktopFileBaseName = desktopFileName.replace(/\.desktop$/, '');
 
   // Extract X-AppImage-Version and append to Name in parentheses.
   const versionMatch = desktopFileContent.match(/^X-AppImage-Version=(.+)$/m);
@@ -112,6 +114,20 @@ async function installDesktopFile(squashRoot, appImage) {
         return match;
       }
     );
+
+    // Add the version if possible to the desktop file name.
+    const versionSuffix = `-${version}`;
+    const desktopFileNameWithId = `${desktopFileBaseName}${versionSuffix}.desktop`;
+    adjustedDesktopFileName = desktopFileNameWithId;
+  }
+
+  const desktopFile = path.join(appsDir, adjustedDesktopFileName);
+
+  // Remove stale desktop files to clean up the cache.
+  for (const file of await fs.readdir(appsDir)) {
+    if (file.startsWith(desktopFileBaseName) && file.endsWith('.desktop')) {
+      await fs.remove(path.join(appsDir, file)).catch(() => {});
+    }
   }
 
   // Replace AppRun with the actual AppImage path and append --no-sandbox %U
@@ -143,6 +159,12 @@ async function registerDesktopFile(desktopFileName, desktopFileContent) {
 
   // Create the desktop integration.
   await run(`update-desktop-database "${appsDir}"`, { maxBuffer: MAX_BUFFER_SIZE });
+  
+  // Force update desktop menu.
+  try {
+    await run(`xdg-desktop-menu forceupdate`, { maxBuffer: MAX_BUFFER_SIZE });
+  } catch {}
+
   for (const mimeType of mimeTypes) {
     try {
       await run(`xdg-mime default "${path.basename(desktopFileName)}" "${mimeType}"`, { maxBuffer: MAX_BUFFER_SIZE });
@@ -153,11 +175,6 @@ async function registerDesktopFile(desktopFileName, desktopFileContent) {
   try {
     const mimeDir = path.join(xdgDataHome(), 'mime');
     await run(`update-mime-database "${mimeDir}"`, { maxBuffer: MAX_BUFFER_SIZE });
-  } catch {}
-
-  // Force update desktop menu.
-  try {
-    await run(`xdg-desktop-menu forceupdate`, { maxBuffer: MAX_BUFFER_SIZE });
   } catch {}
 }
 
