@@ -3,6 +3,7 @@ const path = require('path');
 const os = require('os');
 const { execFile, exec } = require('child_process');
 const util = require('util');
+const { IS_TESTNET } = require('../utils/constants/dev_options');
 const run = util.promisify(exec);
 const runFile = util.promisify(execFile);
 
@@ -124,9 +125,13 @@ async function installDesktopFile(squashRoot, appImage) {
   const desktopFile = path.join(appsDir, adjustedDesktopFileName);
 
   // Remove stale desktop files to clean up the cache.
-  for (const file of await fs.readdir(appsDir)) {
-    if (file.startsWith(desktopFileBaseName) && file.endsWith('.desktop')) {
-      await fs.remove(path.join(appsDir, file)).catch(() => {});
+  for (const filename of await fs.readdir(appsDir)) {
+    if (filename.startsWith(desktopFileBaseName) && filename.endsWith('.desktop')) {
+
+      // Don't delete testnet files if not installing testnet and vice versa.
+      if (IS_TESTNET === filename.includes('testnet')) {
+        await fs.remove(path.join(appsDir, filename)).catch(() => {});
+      }
     }
   }
 
