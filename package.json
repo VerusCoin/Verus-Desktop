@@ -1,7 +1,7 @@
 {
   "name": "verus-desktop",
   "productName": "Verus-Desktop",
-  "version": "1.2.12-2",
+  "version": "1.2.13",
   "description": "Verus Desktop Wallet App",
   "main": "main.js",
   "scripts": {
