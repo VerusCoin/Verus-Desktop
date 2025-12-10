@@ -6,6 +6,7 @@ const util = require('util');
 const { IS_TESTNET } = require('../utils/constants/dev_options');
 const run = util.promisify(exec);
 const runFile = util.promisify(execFile);
+const { APP_NAME } = require('../../appBasicInfo');
 
 // Increase maxBuffer to handle large outputs (e.g., AppImage extraction).
 const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
@@ -142,6 +143,14 @@ async function installDesktopFile(squashRoot, appImage) {
     `Exec=${appImage} --no-sandbox %U`
   );
 
+  // Update the StartupWMClass to properly associate the running app with the desktop icon.
+  // The name used by electron doesn't match the one used by electron builder, so we need to set it here.
+  const wmClass = APP_NAME;
+  desktopFileContent = desktopFileContent.replace(
+    /^StartupWMClass=.*$/m,
+    `StartupWMClass=${wmClass}`
+  );
+  
   await fs.writeFile(desktopFile, desktopFileContent, { mode: 0o644 });
   
   return { content: desktopFileContent, path: desktopFile };

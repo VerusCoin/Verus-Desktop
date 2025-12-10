@@ -37,6 +37,7 @@ if (!hasLock) {
   const { MasterSecret, BuiltinSecret } = require("./routes/preloads/keys");
   const setuplink = require("./routes/deeplink/setuplink");
   const removelink = require('./routes/deeplink/removelink');
+  const { APP_NAME, APP_MODE, APP_VERSION } = require('./routes/appBasicInfo');
 
   const guiapp = express();
 
@@ -44,9 +45,9 @@ if (!hasLock) {
   const { appConfig } = api;
 
   const appBasicInfo = {
-    name: "Verus Desktop",
-    mode: "standard",
-    version: version.version,
+    name: APP_NAME,
+    mode: APP_MODE,
+    version: APP_VERSION,
   };
 
   app.setName(appBasicInfo.name);
