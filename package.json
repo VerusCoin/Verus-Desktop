@@ -140,7 +140,7 @@
       "icon": "assets/icons/agama_icons",
       "desktop": {
         "Encoding": "UTF-8",
-        "MimeType": "x-scheme-handler/i5jtwbp6zymeay9llnraglgjqgdrffsau4"
+        "MimeType": "x-scheme-handler/i5jtwbp6zymeay9llnraglgjqgdrffsau4;x-scheme-handler/verus"
       },
       "target": [
         "appimage"
