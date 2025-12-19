@@ -42,7 +42,10 @@ module.exports = (api) => {
       } else {
         const req = GenericRequest.fromWalletDeeplinkUri(urlstring);
         id = GENERIC_REQUEST_DEEPLINK_VDXF_KEY.vdxfid;
-        data = req.toBuffer();
+        // Send the request as a QR string so it's properly serialized.
+        // If the buffer is sent directly, the IPC converts it to a JSON object and increases
+        // the size of the payload.
+        data = req.toQrString();
       }
 
       return api.loginConsentUi.deeplink(
