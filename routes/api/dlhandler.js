@@ -1,24 +1,21 @@
 const {
+  GENERIC_REQUEST_DEEPLINK_VDXF_KEY,
+  GenericRequest,
   LOGIN_CONSENT_REQUEST_VDXF_KEY,
   LoginConsentRequest,
   VERUSPAY_INVOICE_VDXF_KEY,
-  VerusPayInvoice,
-  IDENTITY_UPDATE_REQUEST_VDXF_KEY,
-  IdentityUpdateRequest,
-  DEEPLINK_PROTOCOL_URL_CURRENT_VERSION,
-  GenericRequest
+  VerusPayInvoice
 } = require('verus-typescript-primitives');
-const base64url = require("base64url");
-const { ROOT_SYSTEM_NAME } = require('./utils/constants/dev_options');
-const { SUPPORTED_DLS, CALLBACK_HOST } = require('./utils/constants/supported_dls');
+const {ROOT_SYSTEM_NAME} = require('./utils/constants/dev_options');
+const {SUPPORTED_DLS, CALLBACK_HOST} = require('./utils/constants/supported_dls');
 
 module.exports = (api) => {
   api.dlhandler = (urlstring) => {
     const deeplinkHandler = (urlstring) => {
       const url = new URL(urlstring);
 
-      let dl;
       let id;
+      let data;
 
       // Handle v1 and v2 requests separately.
       if (url.host === CALLBACK_HOST) {
@@ -28,6 +25,7 @@ module.exports = (api) => {
           throw new Error('Unsupported deeplink url path.');
         }
 
+        let dl;
         switch (id) {
           case LOGIN_CONSENT_REQUEST_VDXF_KEY.vdxfid:
             dl = LoginConsentRequest.fromWalletDeeplinkUri(urlstring);
@@ -36,23 +34,21 @@ module.exports = (api) => {
           case VERUSPAY_INVOICE_VDXF_KEY.vdxfid:
             dl = VerusPayInvoice.fromWalletDeeplinkUri(urlstring);
             break;
-
-          case IDENTITY_UPDATE_REQUEST_VDXF_KEY.vdxfid:
-            dl = IdentityUpdateRequest.fromWalletDeeplinkUri(urlstring);
-            break;
             
           default:
             throw new Error(`Unsupported deeplink ID: ${urlstring}`);
         }
+        data = dl.toJson();
       } else {
-        dl = GenericRequest.fromWalletDeeplinkUri(urlstring);
-        id = DEEPLINK_PROTOCOL_URL_CURRENT_VERSION.toString();
+        const req = GenericRequest.fromWalletDeeplinkUri(urlstring);
+        id = GENERIC_REQUEST_DEEPLINK_VDXF_KEY.vdxfid;
+        data = req.toBuffer();
       }
 
       return api.loginConsentUi.deeplink(
         {
           id: id,
-          data: dl.toJson()
+          data: data
         },
         {
           id: "VERUS_DESKTOP_MAIN",

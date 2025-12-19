@@ -7997,7 +7997,7 @@ verror@^1.10.0:
 
 "verus-typescript-primitives@git+https://github.com/mcstoer/verus-typescript-primitives.git#generic-request-credential-keys":
   version "1.0.0"
-  resolved "git+https://github.com/mcstoer/verus-typescript-primitives.git#68e47b27669fadbbb3fc4de8db944b79d5b167ea"
+  resolved "git+https://github.com/mcstoer/verus-typescript-primitives.git#68afe0a4a95cff57be07925f7b575658f8063617"
   dependencies:
     base64url "3.0.1"
     bech32 "2.0.0"
@@ -8027,7 +8027,7 @@ verror@^1.10.0:
 
 "verusd-rpc-ts-client@git+https://github.com/mcstoer/verusd-rpc-ts-client.git#generic-request-credential-keys":
   version "0.1.0"
-  resolved "git+https://github.com/mcstoer/verusd-rpc-ts-client.git#d68031949eb8b64c4919c3b2d18d8c1e63a66883"
+  resolved "git+https://github.com/mcstoer/verusd-rpc-ts-client.git#fcd27b5d915005202c84570a0df607b7d126f42d"
   dependencies:
     axios "1.7.4"
     verus-typescript-primitives "git+https://github.com/mcstoer/verus-typescript-primitives.git#generic-request-credential-keys"
