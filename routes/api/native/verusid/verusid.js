@@ -3,6 +3,7 @@ module.exports = (api) => {
   api.native.verusid.login = {}
   api.native.verusid.provision = {}
   api.native.verusid.identity = {}
+  api.native.verusid.generic = {}
 
   // Identity
   require('./identity/verifyIdentityUpdateRequest')(api);
@@ -16,6 +17,9 @@ module.exports = (api) => {
   // Provisioning
   require('./provision/signIdProvisioningRequest')(api);
   require('./provision/verifyIdProvisioningResponse')(api);
+
+  // Generic
+  require('./generic/verifyGenericRequest')(api);
 
   return api;
 };
