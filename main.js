@@ -39,6 +39,9 @@ if (!hasLock) {
   const removelink = require('./routes/deeplink/removelink');
   const { APP_NAME, APP_MODE, APP_VERSION } = require('./routes/appBasicInfo');
 
+  // Project root directory (parent of 'out' when compiled, or current dir in dev)
+  const PROJECT_ROOT = path.resolve(__dirname, '..');
+
   const guiapp = express();
 
   //TODO: add more things here
@@ -147,7 +150,7 @@ if (!hasLock) {
     res.send("Verus app server");
   });
 
-  const guipath = path.join(__dirname, "/gui");
+  const guipath = path.join(PROJECT_ROOT, "gui");
   guiapp.use("/gui", express.static(guipath));
   guiapp.use("/api", api);
 
@@ -223,7 +226,7 @@ if (!hasLock) {
     appCloseWindow.loadURL(
       appConfig.general.main.dev || process.argv.indexOf("devmode") > -1
         ? `http://127.0.0.1:${appConfig.general.main.agamaPort}/gui/startup/app-closing.html`
-        : `file://${__dirname}/gui/startup/app-closing.html`
+        : `file://${PROJECT_ROOT}/gui/startup/app-closing.html`
     );
 
     appCloseWindow.webContents.on("did-finish-load", () => {
@@ -397,7 +400,7 @@ if (!hasLock) {
     alreadyRunningWindow.loadURL(
       appConfig.general.main.dev || process.argv.indexOf("devmode") > -1
         ? `http://127.0.0.1:${appConfig.general.main.agamaPort}/gui/startup/agama-instance-error.html`
-        : `file://${__dirname}/gui/startup/agama-instance-error.html`
+        : `file://${PROJECT_ROOT}/gui/startup/agama-instance-error.html`
     );
 
     alreadyRunningWindow.webContents.on("did-finish-load", () => {
@@ -460,7 +463,7 @@ if (!hasLock) {
     mainWindow.loadURL(
       appConfig.general.main.dev || process.argv.indexOf("devmode") > -1
         ? "http://localhost:3000"
-        : `file://${__dirname}/gui/Verus-Desktop-GUI/react/build/index.html`
+        : `file://${PROJECT_ROOT}/gui/Verus-Desktop-GUI/react/build/index.html`
     );
 
     mainWindow.webContents.on("devtools-opened", () => {

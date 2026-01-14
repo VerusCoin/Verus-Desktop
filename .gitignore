@@ -65,3 +65,4 @@ react/package.json
 
 # Build files
 dist/*
+out/*
