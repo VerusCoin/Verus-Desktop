@@ -1,15 +1,15 @@
 module.exports = (api) => { 
   
   /**
-   * Decrypts data given the arguments of a data descriptor, and optionally
+   * Decrypts data given the parameters of a data descriptor, and optionally
    * evk, ivk, txid and/or if to retrieve the data from its reference.
    * 
    * @param {String} coin The chainTicker of the coin to make the call on
-   * @param {String} arguments The arguments to pass to decryptdata
+   * @param {Object} params The parameters to pass to decryptdata
    */
   api.native.decrypt_data = (
     coin,
-    arguments,
+    params,
   ) => {
     return new Promise((resolve, reject) => {
       api.native
@@ -17,7 +17,7 @@ module.exports = (api) => {
           coin,
           "decryptdata",
           [
-            arguments,
+            params,
           ]
         )
       .then(resultObj => {
@@ -29,16 +29,16 @@ module.exports = (api) => {
     });
   };
 
-  api.setPost('/native/decrypt_data', (req, res, next) => {
+  api.setPost('/native/decrypt_data', (req, res) => {
     const {
       chainTicker,
-      arguments
+      parameters
     } = req.body;
 
     api.native
       .decrypt_data(
         chainTicker,
-        arguments
+        parameters
       )
       .then(resultObj => {
         const retObj = {

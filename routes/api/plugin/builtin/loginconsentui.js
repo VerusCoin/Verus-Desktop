@@ -5,7 +5,7 @@ const {
   LOGIN_CONSENT_REDIRECT_VDXF_KEY,
   LoginConsentResponse,
   IDENTITY_UPDATE_RESPONSE_VDXF_KEY,
-  ResponseUri,
+  ResponseURI,
 } = require("verus-typescript-primitives");
 const { pushMessage } = require('../../../ipc/ipc');
 const { ReservedPluginTypes } = require('../../utils/plugin/builtin');
@@ -24,8 +24,8 @@ module.exports = (api) => {
     // Type can either be a string vdxfkey or a BN converted into a number.
     const usesResponseUri = responseKey === IDENTITY_UPDATE_RESPONSE_VDXF_KEY.vdxfid;
     if (usesResponseUri) {
-      const responseUri = ResponseUri.fromJson(redirectinfo);
-      processedType = ResponseUri.type;
+      const responseUri = ResponseURI.fromJson(redirectinfo);
+      processedType = responseUri.type;
     }
 
     const post = async () => {
@@ -85,8 +85,8 @@ module.exports = (api) => {
     const handlers = {
       [LOGIN_CONSENT_WEBHOOK_VDXF_KEY.vdxfid]: post,
       [LOGIN_CONSENT_REDIRECT_VDXF_KEY.vdxfid]: redirect,
-      [ResponseUri.TYPE_POST]: post,
-      [ResponseUri.TYPE_REDIRECT]: redirect,
+      [ResponseURI.TYPE_POST]: post,
+      [ResponseURI.TYPE_REDIRECT]: redirect,
     };
 
     return handlers[processedType] == null ? null : handlers[processedType]();
