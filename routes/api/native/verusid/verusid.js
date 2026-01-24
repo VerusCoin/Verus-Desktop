@@ -20,6 +20,7 @@ module.exports = (api) => {
 
   // Generic
   require('./generic/verifyGenericRequest')(api);
+  require('./generic/signGenericResponse').default(api);
 
   return api;
 };

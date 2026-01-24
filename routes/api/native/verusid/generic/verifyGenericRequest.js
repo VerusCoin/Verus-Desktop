@@ -1,4 +1,4 @@
-const {GenericRequest, GENERIC_REQUEST_VDXF_KEY} = require("verus-typescript-primitives")
+const {GenericRequest} = require("verus-typescript-primitives")
 
 module.exports = (api) => {
   /**
