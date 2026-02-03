@@ -1,41 +1,43 @@
-const { IdentityUpdateRequest } = require("verus-typescript-primitives")
-const { encryptCredentialsInContentMultiMap } = require("../../../utils/credentials/encryptCredentials")
+import {IdentityUpdateRequestDetails} from 'verus-typescript-primitives';
+import {encryptCredentialsInContentMultiMap} from '../../../utils/credentials/encryptCredentials';
 
-module.exports = (api) => {
-  api.native.verusid.identity.execute_identity_update_request = async (coin, request) => {
-    const identityUpdateRequest = IdentityUpdateRequest.fromJson(request);
-
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+module.exports = (api: any) => {
+  api.native.verusid.identity.execute_identity_update_request = async (
+    coin: string,
+    detail: IdentityUpdateRequestDetails
+  ) => {
     // Replace any values that need to be encrypted before updating the identity.
-    if (!identityUpdateRequest.details.identity) {
-      throw new Error("IdentityUpdateRequest does not contain an identity.");
+    if (!detail.identity) {
+      throw new Error('IdentityUpdateRequest does not contain an identity.');
     }
 
-    const address = identityUpdateRequest.details.identity.name;
-    const identity = await api.native.get_identity(coin, identityUpdateRequest.details.identity.name);
+    // Change the identity name in the detail to include `@` at the end so that it is valid.
+    detail.identity.name = detail.identity.name + '@';
+    const address = detail.identity.name;
+    const identity = await api.native.get_identity(coin, detail.identity.name);
     const zaddress = identity.identity.privateaddress;
-    
+
     if (!zaddress) {
       throw new Error(`No z-address found for identity ${address}`);
     }
 
-    // Generate the viewing key and encryption address to encrypt the credentials.
-    const encryptionAddressInfo = await api.native.z_get_encryption_address(
-      coin, 
-      {
-        address: zaddress,
-        fromid: address,
-        toid: address
-      }
-    );
+    console.log('Generating the viewing key and encryption address to encrypt the credentials.');
 
-    if (!encryptionAddressInfo
-      || !encryptionAddressInfo.address
-      || !encryptionAddressInfo.ivk
-    ) {
+    // Generate the viewing key and encryption address to encrypt the credentials.
+    const encryptionAddressInfo = await api.native.z_get_encryption_address(coin, {
+      address: zaddress,
+      fromid: address,
+      toid: address,
+    });
+
+    if (!encryptionAddressInfo || !encryptionAddressInfo.address || !encryptionAddressInfo.ivk) {
       throw new Error(`Failed to get the personal encryption address for ${address}`);
     }
 
-    const contentmultimap = identityUpdateRequest.details.identity.content_multimap;
+    console.log('Encrypting the credentials.');
+
+    const contentmultimap = detail.identity.content_multimap;
 
     if (contentmultimap) {
       await encryptCredentialsInContentMultiMap(
@@ -48,33 +50,43 @@ module.exports = (api) => {
       );
     }
 
-    const txid = await api.native.update_identity(
-      coin,
-      identityUpdateRequest.details.toCLIJson()
-    );
+    console.log('Updating the identity: ', detail);
 
-    return { txid: txid };
+    const txid = await api.native.update_identity(coin, detail.toCLIJson());
+
+    console.log('Transaction ID: ', txid);
+
+    return {txid: txid};
   };
 
-  api.setPost("/native/verusid/identity/execute_identity_update_request", async (req, res, next) => {
-    const { chainTicker, request } = req.body;
+  api.setPost(
+    '/native/verusid/identity/execute_identity_update_request',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async (req: any, res: any) => {
+      const {chainTicker, detailJSON} = req.body;
 
-    try {
-      res.send(
-        JSON.stringify({
-          msg: "success",
-          result: await api.native.verusid.identity.execute_identity_update_request(chainTicker, request),
-        })
-      );
-    } catch (e) {
-      res.send(
-        JSON.stringify({
-          msg: "error",
-          result: e.message,
-        })
-      );
+      try {
+        const detail = IdentityUpdateRequestDetails.fromJson(detailJSON);
+
+        res.send(
+          JSON.stringify({
+            msg: 'success',
+            result: await api.native.verusid.identity.execute_identity_update_request(
+              chainTicker,
+              detail
+            ),
+          })
+        );
+      } catch (e) {
+        res.send(
+          JSON.stringify({
+            msg: 'error',
+            result: e.message,
+          })
+        );
+      }
     }
-  });
+  );
 
   return api;
 };
