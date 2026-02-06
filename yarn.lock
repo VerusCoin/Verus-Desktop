@@ -7995,9 +7995,9 @@ verror@^1.10.0:
     bs58check "2.0.0"
     create-hash "1.2.0"
 
-"verus-typescript-primitives@https://github.com/mcstoer/verus-typescript-primitives.git#credential-key-update":
+"verus-typescript-primitives@git+https://github.com/mcstoer/verus-typescript-primitives.git#credential-key-update":
   version "1.0.0"
-  resolved "https://github.com/mcstoer/verus-typescript-primitives.git#509ee45582a83732705369904a495daed4187288"
+  resolved "git+https://github.com/mcstoer/verus-typescript-primitives.git#509ee45582a83732705369904a495daed4187288"
   dependencies:
     base64url "3.0.1"
     bech32 "2.0.0"
