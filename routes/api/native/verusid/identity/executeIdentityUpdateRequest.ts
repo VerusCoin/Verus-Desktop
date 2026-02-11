@@ -22,8 +22,6 @@ module.exports = (api: any) => {
       throw new Error(`No z-address found for identity ${address}`);
     }
 
-    console.log('Generating the viewing key and encryption address to encrypt the credentials.');
-
     // Generate the viewing key and encryption address to encrypt the credentials.
     const encryptionAddressInfo = await api.native.z_get_encryption_address(coin, {
       address: zaddress,
@@ -34,8 +32,6 @@ module.exports = (api: any) => {
     if (!encryptionAddressInfo || !encryptionAddressInfo.address || !encryptionAddressInfo.ivk) {
       throw new Error(`Failed to get the personal encryption address for ${address}`);
     }
-
-    console.log('Encrypting the credentials.');
 
     const contentmultimap = detail.identity.content_multimap;
 
@@ -50,11 +46,7 @@ module.exports = (api: any) => {
       );
     }
 
-    console.log('Updating the identity: ', detail);
-
     const txid = await api.native.update_identity(coin, detail.toCLIJson());
-
-    console.log('Transaction ID: ', txid);
 
     return {txid: txid};
   };
