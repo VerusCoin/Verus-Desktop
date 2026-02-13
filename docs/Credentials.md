@@ -73,8 +73,8 @@ The steps for the encryption process are as follows.
     </details>
 
 
-3.  Hash the vdxfkey corresponding to `vrsc::identity.credentials` with the ivk using `getvdxfid` with
-      - `vrsc::identity.credentials`
+3.  Hash the vdxfkey corresponding to `vrsc::identity.credential` with the ivk using `getvdxfid` with
+      - `vrsc::identity.credential`
       - `uint256`: the ivk
 
     Get the `vdxfid` in the result for the next step.
@@ -82,16 +82,16 @@ The steps for the encryption process are as follows.
     <details><summary>Example:</summary>
 
     ```bash
-    getvdxfid vrsc::identity.credentials '{"uint256":"f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"}'
+    getvdxfid vrsc::identity.credential '{"uint256":"f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"}'
     ```
     ```json
     {
-      "vdxfid": "iQyAw5u3ri95RT3nZsRpPy1MVj18bdreHK",
-      "indexid": "xVoHPtL8i2Mk3cvpRZ5yNMXtXP29ZL4AMN",
-      "hash160result": "c9b30b4a009f0099e414f4b40e38e9178997c5eb",
+      "vdxfid": "i4zYNxkyAsMKuL5MFV9cy5aqxCbhTnS3da",
+      "indexid": "x9peqmC42BZzXVxP7AomwU7NyrciGcZi1T",
+      "hash160result": "01dc9f8b9389d5569b6fa505185fd37e0265a510",
       "qualifiedname": {
         "namespace": "i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV",
-        "name": "vrsc::identity.credentials"
+        "name": "vrsc::identity.credential"
       },
       "bounddata": {
         "uint256": "f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"
@@ -110,7 +110,7 @@ The steps for the encryption process are as follows.
     updateidentity '{     
       "name": "CredentialTester@",
       "contentmultimap": {
-        "iQyAw5u3ri95RT3nZsRpPy1MVj18bdreHK": [
+        "i4zYNxkyAsMKuL5MFV9cy5aqxCbhTnS3da": [
           {
             "vrsc::data.type.object.datadescriptor": {
               "version": 1,
@@ -158,8 +158,8 @@ The steps for the decryption process are as follows.
     </details>
 
 
-2.  Hash the vdxfkey corresponding to `vrsc::identity.credentials` with the ivk using `getvdxfid` with
-      - `vrsc::identity.credentials`
+2.  Hash the vdxfkey corresponding to `vrsc::identity.credential` with the ivk using `getvdxfid` with
+      - `vrsc::identity.credential`
       - `uint256`: the ivk
 
     This is the same as Step 3 from the [*Encryption Process*](#encryption-process).
@@ -169,16 +169,16 @@ The steps for the decryption process are as follows.
     <details><summary>Example:</summary>
 
     ```bash
-    getvdxfid vrsc::identity.credentials '{"uint256":"f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"}'
+    getvdxfid vrsc::identity.credential '{"uint256":"f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"}'
     ```
     ```json
     {
-      "vdxfid": "iQyAw5u3ri95RT3nZsRpPy1MVj18bdreHK",
-      "indexid": "xVoHPtL8i2Mk3cvpRZ5yNMXtXP29ZL4AMN",
-      "hash160result": "c9b30b4a009f0099e414f4b40e38e9178997c5eb",
+      "vdxfid": "i4zYNxkyAsMKuL5MFV9cy5aqxCbhTnS3da",
+      "indexid": "x9peqmC42BZzXVxP7AomwU7NyrciGcZi1T",
+      "hash160result": "01dc9f8b9389d5569b6fa505185fd37e0265a510",
       "qualifiedname": {
         "namespace": "i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV",
-        "name": "vrsc::identity.credentials"
+        "name": "vrsc::identity.credential"
       },
       "bounddata": {
         "uint256": "f094f7446c88558005eebfcff532cb448bd0ada959903bc2570b1a5c74e41e07"
@@ -201,7 +201,7 @@ The steps for the decryption process are as follows.
     ```
     ```json
     "contentmultimap": {
-      "iQyAw5u3ri95RT3nZsRpPy1MVj18bdreHK": [
+      "i4zYNxkyAsMKuL5MFV9cy5aqxCbhTnS3da": [
         {
           "i4GC1YGEVD21afWudGoFJVdnfjJ5XWnCQv": {
             "version": 1,
