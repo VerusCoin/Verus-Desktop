@@ -1,17 +1,25 @@
-# Credentials
+# Encrypted Keys
 
-Credentials contain sensitive information, so they must be encrypted at rest. The wallet handles the encryption and decryption of credentials for the user.
+Certain vdxfkeys, also known as encrypted keys, are for sensitive data that must be encrypted at rest. The wallet handles the encryption and decryption of the sensitive data for the user.
 
-The encryption and decryption processes are works in progress.
+The encryption and decryption processes are still being developed.
 
-## Notes
+## List of Encrypted Keys
+
+The following keys are used to store sensitive data in encrypted form:
+
+- `vrsc::identity.credential`: Stores credentials (such as usernames and passwords), which can be given to applications for authentication purposes.
+
+## General Notes
 
 1. For encrypting and storing data to be accessed only by a specific identity (e.g., yourself), both the `fromid` and `toid` must match that identity.
-2. For the encryption and decryption processes, an identity with a z-address is needed. 
+2. For the encryption and decryption processes, an identity with a z-address is needed.
+3. The decryption process doesn't currently use a vdxfkey for selective searching within the `contentmultimap`, but it should in the future.
+4. Currently, the encryption process runs whenever an encrypted key is found at the top level of the `contentmultimap` keys of the Identity Update Request. For a credential, `vrsc::identity.credential` key and the plaintext credential are respectively replaced with a derived key hash (based on `vrsc::identity.credential` and the encryption ivk) and a data descriptor that contains the encrypted credential data. More detail about this replacement can be found below in [Encryption Process with a Credential](#encryption-process-with-a-credential).
 
-## Encryption Process
+## Encryption Process with a Credential
 
-The steps for the encryption process are as follows.
+The encryption process follows these steps:
 
 1.  Run `z_getencryptionaddress` with
       - `address`: the identity's z-address
@@ -126,9 +134,9 @@ The steps for the encryption process are as follows.
     </details>
 
 
-## Decryption Process
+## Decryption Process with a Credential
 
-The steps for the decryption process are as follows.
+The decryption process follows these steps:
 
 1.  Run `z_getencryptionaddress` with
       - `address`: the identity's z-address
@@ -162,7 +170,7 @@ The steps for the decryption process are as follows.
       - `vrsc::identity.credential`
       - `uint256`: the ivk
 
-    This is the same as Step 3 from the [*Encryption Process*](#encryption-process).
+    This is identical as Step 3 from the [*Encryption Process*](#encryption-process).
 
     Get the `vdxfid` in the result for Step 4.
 
@@ -189,8 +197,6 @@ The steps for the decryption process are as follows.
 
 3.  Get the `contentmultimap` of the identity using `getidentitycontent` with
       - the identity's address
-
-    This doesn't currently use a vdxfkey for selective searching within the `contentmultimap`, but it should in the future.
 
     The `contentmultimap` is within the `identity` part of the JSON result.
 
