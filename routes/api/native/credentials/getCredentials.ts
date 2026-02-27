@@ -1,20 +1,49 @@
-const {
-  DATA_TYPE_OBJECT_DATADESCRIPTOR,
-  fromBase58Check,
+import {
+  DATA_DESCRIPTOR_VDXF_KEY,
   IDENTITY_CREDENTIAL,
-} = require('verus-typescript-primitives');
-const {parseCredential} = require('../../utils/credentials/parseCredential');
+  fromBase58Check,
+  Credential,
+  DATA_TYPE_OBJECT_CREDENTIAL,
+} from 'verus-typescript-primitives';
 
-module.exports = api => {
+interface EncryptionKeys {
+  extendedviewingkey: string;
+  ivk: string;
+}
+
+interface VdxfIdResult {
+  vdxfid: string;
+}
+
+interface IdentityContent {
+  identity: {
+    privateaddress?: string;
+    contentmultimap?: Record<
+      string,
+      Array<Record<string, unknown> | Array<Record<string, unknown>>>
+    >;
+    identityaddress?: string;
+  };
+}
+
+interface CredentialsMap {
+  [scope: string]: Credential[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default (api: any) => {
   /**
    * Extracts and decrypts the list of credentials in the given identity
    *
-   * @param {String} coin The chainTicker of the coin to make the call on
-   * @param {String} address The identity or address to get the credentials from
+   * @param coin The chainTicker of the coin to make the call on
+   * @param address The identity or address to get the credentials from
    */
-  api.native.get_credentials_list = async (coin, address) => {
+  api.native.get_credentials_list = async (
+    coin: string,
+    address: string
+  ): Promise<Credential[]> => {
     // Get the z-address and contentmultimap from the address.
-    const identity = await api.native.get_identity_content(coin, address);
+    const identity: IdentityContent | null = await api.native.get_identity_content(coin, address);
 
     if (!identity || !identity.identity) {
       throw new Error(`Identity not found for ${address}`);
@@ -27,7 +56,7 @@ module.exports = api => {
     }
 
     // Generate the viewing key to decrypt the credentials.
-    const keys = await api.native.z_get_encryption_address(coin, {
+    const keys: EncryptionKeys | null = await api.native.z_get_encryption_address(coin, {
       address: zaddress,
       fromid: address,
       toid: address,
@@ -41,9 +70,11 @@ module.exports = api => {
     const ivk = keys.ivk;
 
     // Generate the credential key using the ivk.
-    const credentialKeyResult = await api.native.get_vdxf_id(coin, IDENTITY_CREDENTIAL.vdxfid, {
-      uint256: ivk,
-    });
+    const credentialKeyResult: VdxfIdResult | null = await api.native.get_vdxf_id(
+      coin,
+      IDENTITY_CREDENTIAL.vdxfid,
+      {uint256: ivk}
+    );
 
     if (!credentialKeyResult || !credentialKeyResult.vdxfid) {
       throw new Error('Failed to generate credential key');
@@ -56,15 +87,17 @@ module.exports = api => {
     }
 
     const credentialEntries = identity.identity.contentmultimap[credentialKey];
-    const credentials = [];
+    const credentials: Credential[] = [];
 
     for (const entry of credentialEntries) {
       // Convert single univalues to an array to make the processing consistent.
-      const entriesToProcess = Array.isArray(entry) ? entry : [entry];
+      const entriesToProcess: Array<Record<string, unknown>> = Array.isArray(entry)
+        ? entry
+        : [entry];
 
       for (const singleEntry of entriesToProcess) {
-        if (singleEntry[DATA_TYPE_OBJECT_DATADESCRIPTOR.vdxfid]) {
-          const dataDescriptor = singleEntry[DATA_TYPE_OBJECT_DATADESCRIPTOR.vdxfid];
+        if (singleEntry[DATA_DESCRIPTOR_VDXF_KEY.vdxfid]) {
+          const dataDescriptor = singleEntry[DATA_DESCRIPTOR_VDXF_KEY.vdxfid];
 
           try {
             const decryptedData = await api.native.decrypt_data(coin, {
@@ -74,12 +107,16 @@ module.exports = api => {
 
             // The data descriptor is in a list.
             if (decryptedData && Array.isArray(decryptedData)) {
-              const credObj = decryptedData[0];
-              const cred = parseCredential(credObj);
+              const credObj = decryptedData[0] as Record<string, unknown>;
+              const credJson = credObj[DATA_TYPE_OBJECT_CREDENTIAL.vdxfid];
+              const cred = Credential.fromJson(
+                credJson as Parameters<typeof Credential.fromJson>[0]
+              );
               credentials.push(cred);
             }
-          } catch (err) {
-            console.error(`Failed to decrypt credential: ${err.message}`);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error(`Failed to decrypt credential: ${message}`);
             // Decrypt the other credentials even if one fails.
           }
         }
@@ -92,17 +129,20 @@ module.exports = api => {
   /**
    * Creates a map of credentials organized by scope
    *
-   * @param {String} coin The chainTicker of the coin to make the call on
-   * @param {String} address The identity or address to get the credentials from
+   * @param coin The chainTicker of the coin to make the call on
+   * @param address The identity or address to get the credentials from
    */
-  api.native.get_credentials_map = async (coin, address) => {
+  api.native.get_credentials_map = async (
+    coin: string,
+    address: string
+  ): Promise<CredentialsMap> => {
     // Get the list of credentials.
-    const credentialsList = await api.native.get_credentials_list(coin, address);
+    const credentialsList: Credential[] = await api.native.get_credentials_list(coin, address);
 
-    const credentialsMap = {};
+    const credentialsMap: CredentialsMap = {};
 
     // Track seen credential keys by scope to avoid duplicates.
-    const seenCredentials = {};
+    const seenCredentials: Record<string, Set<string>> = {};
 
     // Process each credential and organize by the main scope in reverse order so
     // the newest credentials are first.
@@ -110,9 +150,9 @@ module.exports = api => {
       const credential = credentialsList[i];
 
       // Try to convert the main scope into an i-address, if it isn't one already.
-      let mainScope = credential.scopes[0];
+      let mainScope = credential.scopes[0] as string;
       try {
-        fromBase58Check(scope);
+        fromBase58Check(mainScope);
       } catch {
         try {
           const scopeId = await api.native.get_identity(coin, mainScope);
@@ -121,7 +161,9 @@ module.exports = api => {
           }
           // If there is an error getting the identity, then the scope is not an identity.
           // In that case, just leave the scope as is.
-        } catch {}
+        } catch {
+          // Scope is not an identity, leave as is.
+        }
       }
 
       const credentialKey = credential.credentialKey;
@@ -146,15 +188,19 @@ module.exports = api => {
   };
 
   /**
-   * Creates a map of credentials organized by scope
+   * Gets credentials filtered by scope and optionally by credential keys
    *
-   * @param {String} coin The chainTicker of the coin to make the call on
-   * @param {String} address The identity or address to get the credentials from
-   * @param {String} scope The scope of the credentials to get
-   * @param {string[]} credentialKeys - Optional list of credential keys to filter the result by
+   * @param coin The chainTicker of the coin to make the call on
+   * @param address The identity or address to get the credentials from
+   * @param scope The scope of the credentials to get
+   * @param credentialKeys Optional list of credential keys to filter the result by
    */
-
-  api.native.get_credentials_by_scope = async (coin, address, scope, credentialKeys) => {
+  api.native.get_credentials_by_scope = async (
+    coin: string,
+    address: string,
+    scope: string,
+    credentialKeys?: string[]
+  ): Promise<Credential[]> => {
     const credentialsMap = await api.native.get_credentials_map(coin, address);
     const scopeCredentials = credentialsMap[scope] || [];
 
@@ -162,30 +208,38 @@ module.exports = api => {
       return scopeCredentials;
     }
 
-    return scopeCredentials.filter(cred => credentialKeys.includes(cred.credentialKey));
+    return scopeCredentials.filter((cred: Credential) =>
+      credentialKeys.includes(cred.credentialKey)
+    );
   };
 
-  api.setPost('/native/get_credentials_by_scope', async (req, res, next) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  api.setPost('/native/get_credentials_by_scope', async (req: any, res: any) => {
     const {coin, address, scope, credentialKeys} = req.body;
 
-    api.native
-      .get_credentials_by_scope(coin, address, scope, credentialKeys)
-      .then(resultObj => {
-        const retObj = {
+    try {
+      const result = await api.native.get_credentials_by_scope(
+        coin,
+        address,
+        scope,
+        credentialKeys
+      );
+
+      res.send(
+        JSON.stringify({
           msg: 'success',
-          result: resultObj,
-        };
-
-        res.send(JSON.stringify(retObj));
-      })
-      .catch(error => {
-        const retObj = {
+          result: result,
+        })
+      );
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      res.send(
+        JSON.stringify({
           msg: 'error',
-          result: error.message,
-        };
-
-        res.send(JSON.stringify(retObj));
-      });
+          result: message,
+        })
+      );
+    }
   });
 
   return api;

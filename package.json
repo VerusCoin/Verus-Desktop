@@ -78,10 +78,10 @@
     "systeminformation": "5.23.8",
     "tx-builder": "0.18.0",
     "unzipper": "0.10.11",
-    "verus-typescript-primitives": "git+https://github.com/mcstoer/verus-typescript-primitives.git#generic-request-credential-keys",
+    "verus-typescript-primitives": "git+https://github.com/VerusCoin/verus-typescript-primitives.git",
     "verus-wallet-endpoints": "git+https://github.com/VerusCoin/verus-wallet-endpoints.git",
     "verus_bridgekeeper": "git+https://github.com/VerusCoin/verusbridgekeeper.git",
-    "verusd-rpc-ts-client": "git+https://github.com/mcstoer/verusd-rpc-ts-client.git#generic-request-credential-keys",
+    "verusd-rpc-ts-client": "git+https://github.com/VerusCoin/verusd-rpc-ts-client.git",
     "wif": "2.0.6"
   },
   "devDependencies": {
