@@ -1,4 +1,5 @@
 import {AppEncryptionRequestDetails} from 'verus-typescript-primitives';
+import {ZGetEncryptionAddressArgs, ZGetEncryptionAddressResult} from '../../zgetencryptionaddress';
 
 interface AppEncryptionResult {
   incomingViewingKey: string;
@@ -18,15 +19,15 @@ export default (api: any) => {
     const walletinfo = await api.native.callDaemon(coin, 'getwalletinfo', []);
     const seed = walletinfo.seedfp;
 
-    // TODO: Add fetching returnsecret via RETURN_ESK from the detail
-    // once it is able to be handled.
-
-    const keys = await api.native.z_get_encryption_address(coin, {
+    const args: ZGetEncryptionAddressArgs = {
       seed: seed,
       hdindex: detail.derivationNumber.toNumber(),
       fromid: fromID,
       toid: toID,
-    });
+      returnsecret: detail.returnESK(detail.flags),
+    };
+
+    const keys: ZGetEncryptionAddressResult = await api.native.z_get_encryption_address(coin, args);
 
     return {
       extendedViewingKey: keys.extendedviewingkey,

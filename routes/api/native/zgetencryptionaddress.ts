@@ -1,61 +1,67 @@
-module.exports = (api) => { 
-  
+// Temporarily export the interfaces since the API has no defined type yet.
+export interface ZGetEncryptionAddressArgs {
+  address?: string;
+  seed?: string;
+  hdindex?: number;
+  rootkey?: string;
+  fromid?: string;
+  toid?: string;
+  encryptionindex?: number;
+  returnsecret?: boolean;
+}
+
+export interface ZGetEncryptionAddressResult {
+  extendedviewingkey: string;
+  ivk: string;
+  address: string;
+  extendedspendingkey?: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default (api: any) => {
   /**
    * Generates a z-address, viewing key, and optionally an extended secret key using either
    * a z-address in the wallet, wallet seed and hdindex, or root key (extended private key).
-   * 
-   * @param {String} coin The chainTicker of the coin to make the call on
-   * @param {String} args The arguments to pass to z_getencryptionaddress
+   *
+   * @param {string} coin The chainTicker of the coin to make the call on
+   * @param {ZGetEncryptionAddressArgs} args The arguments to pass to z_getencryptionaddress
+   *   - address: z-address that is present in this wallet
+   *   - seed: raw wallet seed
+   *   - hdindex: address to derive from seed (default=0)
+   *   - rootkey: extended private key
+   *   - fromid: a key to be used between the fromid and the toid
+   *   - toid: a key to be used between the fromid and the toid
+   *   - encryptionindex: index to derive the final encryption HD address from the derived seed (default=0)
+   *   - returnsecret: if true, returns extended private key (default=false)
    */
-  api.native.z_get_encryption_address = (
-    coin,
-    args,
-  ) => {
-    return new Promise((resolve, reject) => {
-      api.native
-        .callDaemon(
-          coin,
-          "z_getencryptionaddress",
-          [
-            args,
-          ]
-        )
-      .then(resultObj => {
-        resolve(resultObj)
-      })
-      .catch(err => {
-        reject(err);
-      });
-    });
+  api.native.z_get_encryption_address = async (
+    coin: string,
+    args: ZGetEncryptionAddressArgs
+  ): Promise<ZGetEncryptionAddressResult> => {
+    return api.native.callDaemon(coin, 'z_getencryptionaddress', [args]);
   };
 
-  api.setPost('/native/z_get_encryption_address', (req, res, next) => {
-    const {
-      chainTicker,
-      args
-    } = req.body;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  api.setPost('/native/z_get_encryption_address', async (req: any, res: any) => {
+    const {chainTicker, args}: {chainTicker: string; args: ZGetEncryptionAddressArgs} = req.body;
 
-    api.native
-      .z_get_encryption_address(
-        chainTicker,
-        args
-      )
-      .then(resultObj => {
-      const retObj = {
-        msg: "success",
-        result: resultObj
-      };
+    try {
+      const result = await api.native.z_get_encryption_address(chainTicker, args);
 
-      res.send(JSON.stringify(retObj));
-      })
-      .catch(error => {
-      const retObj = {
-        msg: "error",
-        result: error.message
-      };
-
-      res.send(JSON.stringify(retObj));
-    });
+      res.send(
+        JSON.stringify({
+          msg: 'success',
+          result,
+        })
+      );
+    } catch (e) {
+      res.send(
+        JSON.stringify({
+          msg: 'error',
+          result: e.message,
+        })
+      );
+    }
   });
 
   return api;

@@ -1,5 +1,6 @@
 import {IdentityUpdateRequestDetails} from 'verus-typescript-primitives';
 import {encryptCredentialsInContentMultiMap} from '../../../utils/credentials/encryptCredentials';
+import {ZGetEncryptionAddressArgs, ZGetEncryptionAddressResult} from '../../zgetencryptionaddress';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 module.exports = (api: any) => {
@@ -22,12 +23,15 @@ module.exports = (api: any) => {
       throw new Error(`No z-address found for identity ${address}`);
     }
 
-    // Generate the viewing key and encryption address to encrypt the credentials.
-    const encryptionAddressInfo = await api.native.z_get_encryption_address(coin, {
+    const args: ZGetEncryptionAddressArgs = {
       address: zaddress,
       fromid: address,
       toid: address,
-    });
+    };
+
+    // Generate the viewing key and encryption address to encrypt the credentials.
+    const encryptionAddressInfo: ZGetEncryptionAddressResult =
+      await api.native.z_get_encryption_address(coin, args);
 
     if (!encryptionAddressInfo || !encryptionAddressInfo.address || !encryptionAddressInfo.ivk) {
       throw new Error(`Failed to get the personal encryption address for ${address}`);

@@ -25,7 +25,7 @@ export default (api: any) => {
       !encryptedDescriptor.datadescriptors ||
       encryptedDescriptor.datadescriptors.length === 0
     ) {
-      throw new Error('No encrypted data descriptor returned from signdata');
+      throw new Error('No encrypted data descriptor returned from signdata.');
     }
 
     const dataDescriptor = DataDescriptor.fromJson(encryptedDescriptor.datadescriptors[0]);

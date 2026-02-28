@@ -5,11 +5,7 @@ import {
   Credential,
   DATA_TYPE_OBJECT_CREDENTIAL,
 } from 'verus-typescript-primitives';
-
-interface EncryptionKeys {
-  extendedviewingkey: string;
-  ivk: string;
-}
+import {ZGetEncryptionAddressResult} from '../zgetencryptionaddress';
 
 interface VdxfIdResult {
   vdxfid: string;
@@ -56,11 +52,14 @@ export default (api: any) => {
     }
 
     // Generate the viewing key to decrypt the credentials.
-    const keys: EncryptionKeys | null = await api.native.z_get_encryption_address(coin, {
-      address: zaddress,
-      fromid: address,
-      toid: address,
-    });
+    const keys: ZGetEncryptionAddressResult | null = await api.native.z_get_encryption_address(
+      coin,
+      {
+        address: zaddress,
+        fromid: address,
+        toid: address,
+      }
+    );
 
     if (!keys || !keys.extendedviewingkey || !keys.ivk) {
       throw new Error(`Failed to get keys for ${address}`);
