@@ -1,10 +1,11 @@
 import {
-  DATA_DESCRIPTOR_VDXF_KEY,
-  IDENTITY_CREDENTIAL,
-  fromBase58Check,
   Credential,
+  DATA_DESCRIPTOR_VDXF_KEY,
   DATA_TYPE_OBJECT_CREDENTIAL,
+  fromBase58Check,
+  IDENTITY_CREDENTIAL,
 } from 'verus-typescript-primitives';
+
 import {ZGetEncryptionAddressResult} from '../zgetencryptionaddress';
 
 interface VdxfIdResult {
@@ -72,7 +73,9 @@ export default (api: any) => {
     const credentialKeyResult: VdxfIdResult | null = await api.native.get_vdxf_id(
       coin,
       IDENTITY_CREDENTIAL.vdxfid,
-      {uint256: ivk}
+      {
+        uint256: ivk,
+      }
     );
 
     if (!credentialKeyResult || !credentialKeyResult.vdxfid) {

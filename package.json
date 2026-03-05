@@ -45,6 +45,7 @@
   "dependencies": {
     "@bitgo/utxo-lib": "git+https://github.com/VerusCoin/BitGoJS.git#utxo-lib-verus",
     "@electron/remote": "1.1.0",
+    "@ianvs/prettier-plugin-sort-imports": "4.7.0",
     "@noble/curves": "1.2.0",
     "@xmldom/xmldom": "0.8.4",
     "agama-wallet-lib": "git+https://github.com/VerusCoin/agama-wallet-lib.git#dev",

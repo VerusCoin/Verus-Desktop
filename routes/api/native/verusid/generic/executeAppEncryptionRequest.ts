@@ -1,4 +1,5 @@
 import {AppEncryptionRequestDetails} from 'verus-typescript-primitives';
+
 import {ZGetEncryptionAddressArgs, ZGetEncryptionAddressResult} from '../../zgetencryptionaddress';
 
 interface AppEncryptionResult {
