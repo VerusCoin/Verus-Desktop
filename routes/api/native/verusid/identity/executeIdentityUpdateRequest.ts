@@ -1,4 +1,5 @@
 import {IdentityUpdateRequestDetails} from 'verus-typescript-primitives';
+
 import {encryptCredentialsInContentMultiMap} from '../../../utils/credentials/encryptCredentials';
 import {ZGetEncryptionAddressArgs, ZGetEncryptionAddressResult} from '../../zgetencryptionaddress';
 

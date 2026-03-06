@@ -1,6 +1,6 @@
-const {GenericRequest} = require("verus-typescript-primitives")
+const {GenericRequest} = require('verus-typescript-primitives');
 
-module.exports = (api) => {
+module.exports = api => {
   /**
    * Verifies a generic request
    * @param {GenericRequest} Request
@@ -10,27 +10,30 @@ module.exports = (api) => {
       coin,
       request.signature.identityID.toIAddress(),
       request.getRawDataSha256().toString('hex'),
-      request.signature.signatureAsVch.toString('base64'),
+      request.signature.signatureAsVch.toString('base64')
     );
-    return verified ? { verified } : { verified, message: "Failed to verify signature" };
+    return verified ? {verified} : {verified, message: 'Failed to verify signature'};
   };
 
-  api.setPost("/native/verusid/generic/verify_generic_request", async (req, res, next) => {
-    const { chainTicker, request } = req.body;
+  api.setPost('/native/verusid/generic/verify_generic_request', async (req, res) => {
+    const {chainTicker, request} = req.body;
     // The request is sent as a QR string to avoid IPC serialization issues.
     const genericRequest = GenericRequest.fromQrString(request);
 
     try {
       res.send(
         JSON.stringify({
-          msg: "success",
-          result: await api.native.verusid.generic.verify_generic_request(chainTicker, genericRequest),
+          msg: 'success',
+          result: await api.native.verusid.generic.verify_generic_request(
+            chainTicker,
+            genericRequest
+          ),
         })
       );
     } catch (e) {
       res.send(
         JSON.stringify({
-          msg: "error",
+          msg: 'error',
           result: e.message,
         })
       );

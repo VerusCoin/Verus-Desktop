@@ -9,19 +9,8 @@
     "sourceMap": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
   },
-  "include": [
-    "main.js",
-    "routes/**/*",
-    "private/**/*",
-    "keys/**/*",
-    "assets/js/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "gui",
-    "dist",
-    "out"
-  ]
+  "include": ["main.js", "routes/**/*", "private/**/*", "keys/**/*", "assets/js/**/*"],
+  "exclude": ["node_modules", "gui", "dist", "out"],
 }

@@ -4,14 +4,14 @@ const {
   LOGIN_CONSENT_REQUEST_VDXF_KEY,
   LoginConsentRequest,
   VERUSPAY_INVOICE_VDXF_KEY,
-  VerusPayInvoice
+  VerusPayInvoice,
 } = require('verus-typescript-primitives');
 const {ROOT_SYSTEM_NAME} = require('./utils/constants/dev_options');
 const {SUPPORTED_DLS, CALLBACK_HOST} = require('./utils/constants/supported_dls');
 
-module.exports = (api) => {
-  api.dlhandler = (urlstring) => {
-    const deeplinkHandler = (urlstring) => {
+module.exports = api => {
+  api.dlhandler = urlstring => {
+    const deeplinkHandler = urlstring => {
       const url = new URL(urlstring);
 
       let id;
@@ -34,7 +34,7 @@ module.exports = (api) => {
           case VERUSPAY_INVOICE_VDXF_KEY.vdxfid:
             dl = VerusPayInvoice.fromWalletDeeplinkUri(urlstring);
             break;
-            
+
           default:
             throw new Error(`Unsupported deeplink ID: ${urlstring}`);
         }
@@ -51,18 +51,18 @@ module.exports = (api) => {
       return api.loginConsentUi.deeplink(
         {
           id: id,
-          data: data
+          data: data,
         },
         {
-          id: "VERUS_DESKTOP_MAIN",
+          id: 'VERUS_DESKTOP_MAIN',
           search_builtin: true,
-          main_chain_ticker: ROOT_SYSTEM_NAME
+          main_chain_ticker: ROOT_SYSTEM_NAME,
         }
       );
     };
 
     return deeplinkHandler(urlstring);
-  }
+  };
 
   return api;
 };

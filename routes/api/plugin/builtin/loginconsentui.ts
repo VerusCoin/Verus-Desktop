@@ -1,16 +1,17 @@
 import axios, {AxiosResponse} from 'axios';
+import base64url from 'base64url';
+import {BrowserWindow, shell} from 'electron';
 import {
+  GENERIC_ENVELOPE_DEEPLINK_VDXF_KEY,
+  LOGIN_CONSENT_REDIRECT_VDXF_KEY,
   LOGIN_CONSENT_RESPONSE_VDXF_KEY,
   LOGIN_CONSENT_WEBHOOK_VDXF_KEY,
-  LOGIN_CONSENT_REDIRECT_VDXF_KEY,
   LoginConsentResponse,
   ResponseURI,
-  GENERIC_ENVELOPE_DEEPLINK_VDXF_KEY,
 } from 'verus-typescript-primitives';
+
 import {pushMessage} from '../../../ipc/ipc';
 import {ReservedPluginTypes} from '../../utils/plugin/builtin';
-import {shell, BrowserWindow} from 'electron';
-import base64url from 'base64url';
 
 interface RedirectInfo {
   type: string;

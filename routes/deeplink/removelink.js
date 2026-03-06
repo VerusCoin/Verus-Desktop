@@ -1,4 +1,4 @@
-const { WALLET_VDXF_KEY } = require("verus-typescript-primitives")
+const {WALLET_VDXF_KEY} = require('verus-typescript-primitives');
 
 function removelink(app) {
   const protocols = [WALLET_VDXF_KEY.vdxfid, 'verus'];
@@ -6,10 +6,10 @@ function removelink(app) {
 
   for (const protocol of protocols) {
     const res = app.removeAsDefaultProtocolClient(protocol);
-    results.push({ protocol, success: res });
+    results.push({protocol, success: res});
   }
 
   return results;
 }
 
-module.exports = removelink
+module.exports = removelink;
