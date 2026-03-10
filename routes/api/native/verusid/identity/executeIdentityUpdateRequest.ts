@@ -14,7 +14,8 @@ module.exports = (api: any) => {
       throw new Error('IdentityUpdateRequest does not contain an identity.');
     }
 
-    // Change the identity name in the detail to include `@` at the end so that it is valid.
+    // Change the identity name in the detail to include `@` at the end so that it is valid
+    // for the getidentity and updateidentity daemon calls.
     detail.identity.name = detail.identity.name + '@';
     const address = detail.identity.name;
     const identity = await api.native.get_identity(coin, detail.identity.name);
@@ -75,10 +76,11 @@ module.exports = (api: any) => {
           })
         );
       } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
         res.send(
           JSON.stringify({
             msg: 'error',
-            result: e.message,
+            result: message,
           })
         );
       }

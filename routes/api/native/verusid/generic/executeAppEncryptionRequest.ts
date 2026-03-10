@@ -18,6 +18,11 @@ export default (api: any) => {
     toID: string
   ): Promise<AppEncryptionResult> => {
     const walletinfo = await api.native.callDaemon(coin, 'getwalletinfo', []);
+
+    if (!walletinfo.seedfp) {
+      throw new Error('No seedfp found in walletinfo.');
+    }
+
     const seed = walletinfo.seedfp;
 
     const args: ZGetEncryptionAddressArgs = {
@@ -61,10 +66,11 @@ export default (api: any) => {
           })
         );
       } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
         res.send(
           JSON.stringify({
             msg: 'error',
-            result: e.message,
+            result: message,
           })
         );
       }

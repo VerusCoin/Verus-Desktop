@@ -99,7 +99,7 @@ interface Api {
 // Wraps shell.openExternal to prevent opening any urls that don't go to the browser for security reasons.
 function safeOpenExternal(url: URL): void {
   if (!['https:', 'http:'].includes(url.protocol)) {
-    return null;
+    return;
   }
 
   try {

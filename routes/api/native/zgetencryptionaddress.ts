@@ -55,10 +55,11 @@ export default (api: any) => {
         })
       );
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
       res.send(
         JSON.stringify({
           msg: 'error',
-          result: e.message,
+          result: message,
         })
       );
     }
