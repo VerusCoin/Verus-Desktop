@@ -31,10 +31,11 @@ module.exports = api => {
             dl = LoginConsentRequest.fromWalletDeeplinkUri(urlstring);
             break;
 
+          /* Currently VerusPay invoices are unsupported.
           case VERUSPAY_INVOICE_VDXF_KEY.vdxfid:
             dl = VerusPayInvoice.fromWalletDeeplinkUri(urlstring);
             break;
-
+          */
           default:
             throw new Error(`Unsupported deeplink ID: ${urlstring}`);
         }

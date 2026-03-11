@@ -5,6 +5,8 @@ const {
   DATA_TYPE_OBJECT_DATADESCRIPTOR,
 } = require('verus-typescript-primitives');
 
+// Replaces the credentials in the contentmultimap with their encrypted forms
+// in data descriptors.
 const encryptCredentialsInContentMultiMap = async (
   api,
   coin,
