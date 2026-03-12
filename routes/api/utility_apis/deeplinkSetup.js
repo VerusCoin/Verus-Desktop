@@ -4,7 +4,7 @@ const os = require('os');
 const {execFile} = require('child_process');
 const util = require('util');
 const {IS_TESTNET} = require('../utils/constants/dev_options');
-const runFile = util.promisify(execFile);
+const execFileAsync = util.promisify(execFile);
 const {APP_NAME} = require('../../appBasicInfo');
 
 // Increase maxBuffer to handle large outputs (e.g., AppImage extraction).
@@ -15,7 +15,7 @@ function xdgDataHome() {
 }
 
 async function extractAppImage(appImage, tmpDir) {
-  await runFile(appImage, ['--appimage-extract'], {
+  await execFileAsync(appImage, ['--appimage-extract'], {
     cwd: tmpDir,
     maxBuffer: MAX_BUFFER_SIZE,
   });
@@ -69,8 +69,10 @@ async function installIcons(squashRoot) {
 
     for (const [cmd, args] of iconCacheCommands) {
       try {
-        await runFile(cmd, args, {maxBuffer: MAX_BUFFER_SIZE});
-      } catch {}
+        await execFileAsync(cmd, args, {maxBuffer: MAX_BUFFER_SIZE});
+      } catch (e) {
+        console.warn(`${cmd} ${args.join(' ')} failed:`, e);
+      }
     }
   }
 }
@@ -174,26 +176,32 @@ async function registerDesktopFile(desktopFileName, desktopFileContent) {
   }
 
   // Create the desktop integration.
-  await runFile('update-desktop-database', [appsDir], {maxBuffer: MAX_BUFFER_SIZE});
+  await execFileAsync('update-desktop-database', [appsDir], {maxBuffer: MAX_BUFFER_SIZE});
 
   // Force update desktop menu.
   try {
-    await runFile('xdg-desktop-menu', ['forceupdate'], {maxBuffer: MAX_BUFFER_SIZE});
-  } catch {}
+    await execFileAsync('xdg-desktop-menu', ['forceupdate'], {maxBuffer: MAX_BUFFER_SIZE});
+  } catch (e) {
+    console.warn(`xdg-desktop-menu forceupdate failed:`, e);
+  }
 
   for (const mimeType of mimeTypes) {
     try {
-      await runFile('xdg-mime', ['default', path.basename(desktopFileName), mimeType], {
+      await execFileAsync('xdg-mime', ['default', path.basename(desktopFileName), mimeType], {
         maxBuffer: MAX_BUFFER_SIZE,
       });
-    } catch {}
+    } catch (e) {
+      console.warn(`xdg-mime default ${path.basename(desktopFileName)} ${mimeType} failed:`, e);
+    }
   }
 
   // Update MIME database.
+  const mimeDir = path.join(xdgDataHome(), 'mime');
   try {
-    const mimeDir = path.join(xdgDataHome(), 'mime');
-    await runFile('update-mime-database', [mimeDir], {maxBuffer: MAX_BUFFER_SIZE});
-  } catch {}
+    await execFileAsync('update-mime-database', [mimeDir], {maxBuffer: MAX_BUFFER_SIZE});
+  } catch (e) {
+    console.warn(`update-mime-database with ${mimeDir} failed:`, e);
+  }
 }
 
 module.exports = api => {

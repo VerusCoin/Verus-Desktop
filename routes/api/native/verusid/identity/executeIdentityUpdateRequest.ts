@@ -22,7 +22,7 @@ module.exports = (api: any) => {
     const zaddress = identity.identity.privateaddress;
 
     if (!zaddress) {
-      throw new Error(`No z-address found for identity ${address}`);
+      throw new Error(`No z-address found for identity ${address}.`);
     }
 
     const args: ZGetEncryptionAddressArgs = {
@@ -32,11 +32,11 @@ module.exports = (api: any) => {
     };
 
     // Generate the viewing key and encryption address to encrypt the credentials.
-    const encryptionAddressInfo: ZGetEncryptionAddressResult =
+    const encryptionAddressInfo: ZGetEncryptionAddressResult | null =
       await api.native.z_get_encryption_address(coin, args);
 
     if (!encryptionAddressInfo || !encryptionAddressInfo.address || !encryptionAddressInfo.ivk) {
-      throw new Error(`Failed to get the personal encryption address for ${address}`);
+      throw new Error(`Failed to get the personal encryption address for ${address}.`);
     }
 
     const contentmultimap = detail.identity.content_multimap;

@@ -3,8 +3,6 @@ const {
   GenericRequest,
   LOGIN_CONSENT_REQUEST_VDXF_KEY,
   LoginConsentRequest,
-  VERUSPAY_INVOICE_VDXF_KEY,
-  VerusPayInvoice,
 } = require('verus-typescript-primitives');
 const {ROOT_SYSTEM_NAME} = require('./utils/constants/dev_options');
 const {SUPPORTED_DLS, CALLBACK_HOST} = require('./utils/constants/supported_dls');
