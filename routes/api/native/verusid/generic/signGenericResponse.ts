@@ -8,6 +8,10 @@ export default (api: any) => {
       datahash: response.getRawDataSha256().toString('hex'),
     });
 
+    if (!signdataResult || !signdataResult.signature) {
+      throw new Error('No signature returned from signdata.');
+    }
+
     response.signature.signatureAsVch = Buffer.from(signdataResult.signature, 'base64');
 
     return response;

@@ -17,10 +17,10 @@ module.exports = api => {
 
   api.setPost('/native/verusid/generic/verify_generic_request', async (req, res) => {
     const {chainTicker, request} = req.body;
-    // The request is sent as a QR string to avoid IPC serialization issues.
-    const genericRequest = GenericRequest.fromQrString(request);
 
     try {
+      // The request is sent as a QR string to avoid IPC serialization issues.
+      const genericRequest = GenericRequest.fromQrString(request);
       res.send(
         JSON.stringify({
           msg: 'success',

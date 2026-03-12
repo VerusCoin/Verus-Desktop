@@ -5,7 +5,7 @@ const {
   LoginConsentRequest,
 } = require('verus-typescript-primitives');
 const {ROOT_SYSTEM_NAME} = require('./utils/constants/dev_options');
-const {SUPPORTED_DLS, CALLBACK_HOST} = require('./utils/constants/supported_dls');
+const {SUPPORTED_V1_DLS, CALLBACK_HOST} = require('./utils/constants/supported_dls');
 
 module.exports = api => {
   api.dlhandler = urlstring => {
@@ -19,7 +19,7 @@ module.exports = api => {
       if (url.host === CALLBACK_HOST) {
         id = url.pathname.split('/')[1];
 
-        if (!SUPPORTED_DLS.includes(id)) {
+        if (!SUPPORTED_V1_DLS.includes(id)) {
           throw new Error('Unsupported deeplink url path.');
         }
 
@@ -28,12 +28,6 @@ module.exports = api => {
           case LOGIN_CONSENT_REQUEST_VDXF_KEY.vdxfid:
             dl = LoginConsentRequest.fromWalletDeeplinkUri(urlstring);
             break;
-
-          /* Currently VerusPay invoices are unsupported.
-          case VERUSPAY_INVOICE_VDXF_KEY.vdxfid:
-            dl = VerusPayInvoice.fromWalletDeeplinkUri(urlstring);
-            break;
-          */
           default:
             throw new Error(`Unsupported deeplink ID: ${urlstring}`);
         }

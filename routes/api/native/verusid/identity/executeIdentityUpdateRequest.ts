@@ -19,6 +19,11 @@ module.exports = (api: any) => {
     detail.identity.name = detail.identity.name + '@';
     const address = detail.identity.name;
     const identity = await api.native.get_identity(coin, detail.identity.name);
+
+    if (!identity) {
+      throw new Error(`No identity found for ${address}.`);
+    }
+
     const zaddress = identity.identity.privateaddress;
 
     if (!zaddress) {
@@ -32,12 +37,8 @@ module.exports = (api: any) => {
     };
 
     // Generate the viewing key and encryption address to encrypt the credentials.
-    const encryptionAddressInfo: ZGetEncryptionAddressResult | null =
+    const encryptionAddressInfo: ZGetEncryptionAddressResult =
       await api.native.z_get_encryption_address(coin, args);
-
-    if (!encryptionAddressInfo || !encryptionAddressInfo.address || !encryptionAddressInfo.ivk) {
-      throw new Error(`Failed to get the personal encryption address for ${address}.`);
-    }
 
     const contentmultimap = detail.identity.content_multimap;
 

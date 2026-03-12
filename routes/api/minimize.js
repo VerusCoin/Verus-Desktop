@@ -1,22 +1,26 @@
-module.exports = (api) => {
-  api.setupMinimizeApis = (minimizeFunction) => {
-    api.minimizeApp = minimizeFunction
+module.exports = api => {
+  api.setupMinimizeApis = minimizeFunction => {
+    api.minimizeApp = minimizeFunction;
 
-    api.setPost('/plugin/minimize', async (req, res, next) => {
+    api.setPost('/plugin/minimize', async (req, res) => {
       try {
-        api.minimizeApp()
+        api.minimizeApp();
 
-        res.send(JSON.stringify({
-          msg: 'success'
-        }))
-      } catch(e) {
-        res.send(JSON.stringify({
-          msg: 'error',
-          error: e.message
-        }))
+        res.send(
+          JSON.stringify({
+            msg: 'success',
+          })
+        );
+      } catch (e) {
+        res.send(
+          JSON.stringify({
+            msg: 'error',
+            result: e.message,
+          })
+        );
       }
     });
-  }
+  };
 
   return api;
 };
