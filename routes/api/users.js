@@ -34,7 +34,7 @@ module.exports = (api) => {
         _fs.accessSync(api.paths.agamaDir, fs.constants.R_OK)
       } catch (e) {
         if (e.code == 'EACCES') {
-          fsnode.chmodSync(usersFileName, '0666');
+          fsnode.chmodSync(usersFileName, '0600');
         } else if (e.code === 'ENOENT') {
           api.log('users directory not found', 'users');
         }
@@ -61,7 +61,7 @@ module.exports = (api) => {
         _fs.accessSync(api.paths.agamaDir, fs.constants.R_OK)
       } catch (e) {
         if (e.code == 'EACCES') {
-          fsnode.chmodSync(usersFileName, '0666');
+          fsnode.chmodSync(usersFileName, '0600');
         } else if (e.code === 'ENOENT') {
           api.log('users directory not found', 'users');
         }
