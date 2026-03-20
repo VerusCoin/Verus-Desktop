@@ -89,7 +89,7 @@ module.exports = (api) => {
           return new Promise((resolve, reject) => {
             const result = 'electrumServers.json file permissions updated to Read/Write';
 
-            fsnode.chmodSync(electrumServersListFileName, '0666');
+            fsnode.chmodSync(electrumServersListFileName, '0600');
 
             setTimeout(() => {
               api.log(result, 'spv.serverList');
@@ -107,7 +107,7 @@ module.exports = (api) => {
                 return api.log(err, 'spv.serverList');
             });
 
-            fsnode.chmodSync(electrumServersListFileName, '0666');
+            fsnode.chmodSync(electrumServersListFileName, '0600');
             setTimeout(() => {
               resolve(result);
             }, 2000);
@@ -129,7 +129,7 @@ module.exports = (api) => {
           return new Promise((resolve, reject) => {
             const result = 'kvElectrumServersCache.json file permissions updated to Read/Write';
 
-            fsnode.chmodSync(kvElectrumServersListFileName, '0666');
+            fsnode.chmodSync(kvElectrumServersListFileName, '0600');
 
             setTimeout(() => {
               api.log(result, 'spv.serverList');
@@ -147,7 +147,7 @@ module.exports = (api) => {
                 return api.log(err, 'spv.serverList');
             });
 
-            fsnode.chmodSync(kvElectrumServersListFileName, '0666');
+            fsnode.chmodSync(kvElectrumServersListFileName, '0600');
             setTimeout(() => {
               resolve(result);
             }, 2000);

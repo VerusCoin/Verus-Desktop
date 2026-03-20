@@ -91,7 +91,7 @@ module.exports = (api) => {
         _fs.accessSync(api.paths.agamaDir, fs.constants.R_OK)
       } catch (e) {
         if (e.code == 'EACCES') {
-          fsnode.chmodSync(configFileName, '0666');
+          fsnode.chmodSync(configFileName, '0600');
         } else if (e.code === 'ENOENT') {
           api.log('config directory not found', 'settings');
         }

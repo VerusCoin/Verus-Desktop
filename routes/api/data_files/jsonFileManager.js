@@ -65,7 +65,7 @@ module.exports = (api) => {
     relativePath,
     description = "No description for this file was provided by the wallet devs :(",
     handleErrors = true,
-    permissions = 0o666
+    permissions = 0o600
   ) => {
     if (ALLOWED_PATHS_ARR.includes(relativePath)) {
       const path = `${api.paths.agamaDir}/${relativePath}`;
@@ -75,7 +75,7 @@ module.exports = (api) => {
           await fs.access(api.paths.agamaDir, fs.constants.R_OK);
         } catch (e) {
           if (e.code == "EACCES") {
-            await fs.chmod(path, "0666");
+            await fs.chmod(path, "0600");
           } else if (e.code === "ENOENT") {
             api.handleFileProblem(`Verus Desktop directory not found`, !handleErrors)
             return

@@ -103,7 +103,7 @@ module.exports = (api) => {
           return new Promise((resolve, reject) => {
             const result = 'spv-cache.json file permissions updated to Read/Write';
 
-            fsnode.chmodSync(spvCacheFileName, '0666');
+            fsnode.chmodSync(spvCacheFileName, '0600');
 
             setTimeout(() => {
               resolve(result);
@@ -119,7 +119,7 @@ module.exports = (api) => {
                         JSON.stringify(api.electrumCache), 'utf8');
 
             if (err) return null;
-            fsnode.chmodSync(spvCacheFileName, '0666');
+            fsnode.chmodSync(spvCacheFileName, '0600');
             setTimeout(() => {
               resolve(result);
             }, 2000);
