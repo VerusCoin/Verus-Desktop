@@ -28,7 +28,7 @@ module.exports = (api) => {
         _fs.accessSync(api.paths.agamaDir, fs.constants.R_OK)
       } catch (e) {
         if (e.code == 'EACCES') {
-          fsnode.chmodSync(registryLocation, '0666');
+          fsnode.chmodSync(registryLocation, '0600');
         } else if (e.code === 'ENOENT') {
           api.log('plugins directory not found', 'plugins');
         }

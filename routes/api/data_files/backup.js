@@ -20,7 +20,7 @@ module.exports = (api) => {
       await fs.access(api.paths.agamaDir, fs.constants.R_OK);
     } catch (e) {
       if (e.code == "EACCES") {
-        await fs.chmod(path, "0666");
+        await fs.chmod(path, "0600");
       } else if (e.code === "ENOENT") {
         api.handleFileProblem(`Verus Desktop directory not found`, !handleErrors)
         return

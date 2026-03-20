@@ -94,7 +94,7 @@ module.exports = (shepherd) => {
           return new Promise((resolve, reject) => {
             const result = 'electrumServers.json file permissions updated to Read/Write';
 
-            fsnode.chmodSync(electrumServersListFileName, '0666');
+            fsnode.chmodSync(electrumServersListFileName, '0600');
 
             setTimeout(() => {
               shepherd.log(result);
@@ -112,7 +112,7 @@ module.exports = (shepherd) => {
                 return shepherd.log(err);
             });
 
-            fsnode.chmodSync(electrumServersListFileName, '0666');
+            fsnode.chmodSync(electrumServersListFileName, '0600');
             setTimeout(() => {
               shepherd.log(result);
               shepherd.log(`electrumServers.json file is created successfully at: ${shepherd.agamaDir}`);
@@ -136,7 +136,7 @@ module.exports = (shepherd) => {
           return new Promise((resolve, reject) => {
             const result = 'kvElectrumServersCache.json file permissions updated to Read/Write';
 
-            fsnode.chmodSync(kvElectrumServersListFileName, '0666');
+            fsnode.chmodSync(kvElectrumServersListFileName, '0600');
 
             setTimeout(() => {
               shepherd.log(result);
@@ -154,7 +154,7 @@ module.exports = (shepherd) => {
                 return shepherd.log(err);
             });
 
-            fsnode.chmodSync(kvElectrumServersListFileName, '0666');
+            fsnode.chmodSync(kvElectrumServersListFileName, '0600');
             setTimeout(() => {
               shepherd.log(result);
               shepherd.log(`kvElectrumServersCache.json file is created successfully at: ${shepherd.agamaDir}`);
