@@ -40,7 +40,7 @@ module.exports = (api: any) => {
     const encryptionAddressInfo: ZGetEncryptionAddressResult =
       await api.native.z_get_encryption_address(coin, args);
 
-    const contentmultimap = detail.identity.content_multimap;
+    const contentmultimap = detail.identity.contentMultiMap;
 
     if (contentmultimap) {
       await encryptCredentialsInContentMultiMap(

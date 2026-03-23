@@ -1,12 +1,13 @@
 import {
   CompactIAddressObject,
-  ContentMultiMap,
   Credential,
   DATA_DESCRIPTOR_VDXF_KEY,
   DATA_TYPE_OBJECT_CREDENTIAL,
   DataDescriptor,
+  FqnContentMultiMap,
+  FqnVdxfUniValue,
   IDENTITY_CREDENTIAL,
-  VdxfUniValue,
+  VdxfUniType,
 } from 'verus-typescript-primitives';
 
 interface GetVdxfIdResult {
@@ -29,7 +30,7 @@ export async function encryptCredentialsInContentMultiMap(
   api: any,
   coin: string,
   address: string,
-  contentmultimap: ContentMultiMap,
+  contentmultimap: FqnContentMultiMap,
   ivk: string,
   encryptionAddress: string
 ): Promise<void> {
@@ -37,18 +38,22 @@ export async function encryptCredentialsInContentMultiMap(
     if (key.toIAddress() === IDENTITY_CREDENTIAL.vdxfid) {
       for (let i = 0; i < valueArray.length; i++) {
         const vdxfUniValue = valueArray[i];
-        if (!(vdxfUniValue instanceof VdxfUniValue)) continue;
-        for (const valueObj of vdxfUniValue.values) {
+        if (!(vdxfUniValue instanceof FqnVdxfUniValue)) continue;
+        // vdxfUniValue.values doesn't work for key comparison since it uses a
+        // different method for generating string keys than toIAddress() or toAddress().
+        // We also have to completely rebuild the values array since we can't modify
+        // it in place.
+        const newValues: Array<{[key: string]: VdxfUniType}> = [];
+        for (const [valueKey, valueType] of Array.from(vdxfUniValue.entries())) {
           // Each valueObj contains exactly one key-value pair.
-          const valueKey = Object.keys(valueObj)[0];
-
-          if (valueKey === DATA_TYPE_OBJECT_CREDENTIAL.vdxfid) {
+          const vdxfkey = valueKey.toAddress();
+          if (vdxfkey === DATA_TYPE_OBJECT_CREDENTIAL.vdxfid) {
             // Replace the credential with the encrypted data descriptor.
-            const vdxfUniType = valueObj[valueKey] as Credential;
+            const credential = valueType as Credential;
 
             const signdataResult = await api.native.sign_data(coin, {
               address: address,
-              vdxfdata: {[valueKey]: vdxfUniType.toJson()},
+              vdxfdata: {[vdxfkey]: credential.toJson()},
               encrypttoaddress: encryptionAddress,
             });
 
@@ -59,13 +64,20 @@ export async function encryptCredentialsInContentMultiMap(
             const dataDescriptor = DataDescriptor.fromJson(
               signdataResult.mmrdescriptor_encrypted.datadescriptors[0]
             );
-            delete valueObj[valueKey];
-            valueObj[DATA_DESCRIPTOR_VDXF_KEY.vdxfid] = dataDescriptor;
+            const descriptorKey = CompactIAddressObject.fromAddress(
+              DATA_DESCRIPTOR_VDXF_KEY.vdxfid
+            );
+            // The setter for the values array converts using Buffer.from(key, 'hex')
+            // so we need to use hex buffer representations.
+            newValues.push({[descriptorKey.toBuffer().toString('hex')]: dataDescriptor});
+          } else {
+            newValues.push({[valueKey.toBuffer().toString('hex')]: valueType});
           }
         }
+        vdxfUniValue.values = newValues;
       }
       // Replace the credentials key with a hashed key.
-      const credentialKeyResult: GetVdxfIdResult | null = await api.native.get_vdxf_id(
+      const credentialKeyResult: GetVdxfIdResult = await api.native.get_vdxf_id(
         coin,
         IDENTITY_CREDENTIAL.vdxfid,
         {
