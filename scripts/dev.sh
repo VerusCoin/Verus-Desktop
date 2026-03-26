@@ -24,7 +24,7 @@ if [ -d "${LOGIN_CONSENT_CLIENT_DIR}" ]; then
   ) &
 fi
 
-# Check if the pbass visualizer exists and start it if possible
+# Check if the pbaas visualizer exists and start it if possible
 if [ -d "${PBAAS_VISUALIZER_DIR}" ]; then
   (
     echo ""

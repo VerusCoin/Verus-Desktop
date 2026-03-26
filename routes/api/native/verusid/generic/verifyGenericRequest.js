@@ -19,8 +19,9 @@ module.exports = api => {
     const {chainTicker, request} = req.body;
 
     try {
-      // The request is sent as a QR string to avoid IPC serialization issues.
-      const genericRequest = GenericRequest.fromQrString(request);
+      // The request is sent as a hex string of the buffer to avoid IPC serialization issues.
+      const genericRequest = new GenericRequest();
+      genericRequest.fromBuffer(Buffer.from(request, 'hex'));
       res.send(
         JSON.stringify({
           msg: 'success',

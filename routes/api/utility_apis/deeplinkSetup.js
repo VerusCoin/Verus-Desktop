@@ -150,13 +150,6 @@ async function installDesktopFile(squashRoot, appImage) {
   return {content: desktopFileContent, path: desktopFile};
 }
 
-// MIME types must be in the form "type/subtype" or "x-scheme-handler/scheme", with only
-// alphanumeric characters, hyphens, dots, underscores, and plus signs allowed in each part.
-// This prevents a maliciously crafted AppImage from injecting shell commands via MimeType entries.
-function isValidMimeType(mimeType) {
-  return /^[a-zA-Z0-9][a-zA-Z0-9!#$&\-^_.+]*\/[a-zA-Z0-9][a-zA-Z0-9!#$&\-^_.+]*$/.test(mimeType);
-}
-
 async function registerDesktopFile(desktopFileName, desktopFileContent) {
   const appsDir = path.dirname(desktopFileName);
 
@@ -167,7 +160,7 @@ async function registerDesktopFile(desktopFileName, desktopFileContent) {
     mimeTypes = mimeTypeMatch[1]
       .split(';')
       .map(m => m.trim())
-      .filter(m => m.length > 0 && isValidMimeType(m));
+      .filter(m => m.length > 0);
   }
 
   // Skip registration if no MIME types found in desktop file
@@ -210,7 +203,6 @@ module.exports = api => {
 
     // Always run the integration so that if the appimage moves or a new version is being used,
     // the user will always have a working integration.
-
     const appImage = process.env.APPIMAGE;
 
     // Skip it if not running from an AppImage.

@@ -33,12 +33,16 @@ module.exports = api => {
         }
         data = dl.toJson();
       } else {
-        const req = GenericRequest.fromWalletDeeplinkUri(urlstring);
-        id = GENERIC_REQUEST_DEEPLINK_VDXF_KEY.vdxfid;
-        // Send the request as a QR string so it's properly serialized.
-        // If the buffer is sent directly, the IPC converts it to a JSON object and increases
-        // the size of the payload.
-        data = req.toQrString();
+        if (api.appConfig.general.main.experimentalFeatures) {
+          const req = GenericRequest.fromWalletDeeplinkUri(urlstring);
+          id = GENERIC_REQUEST_DEEPLINK_VDXF_KEY.vdxfid;
+          // Send the request as the hex string of the buffer so it's properly serialized.
+          // If the buffer is sent directly, the IPC converts it to a JSON object and increases
+          // the size of the payload.
+          data = req.toBuffer().toString('hex');
+        } else {
+          throw new Error('Generic requests are only allowed with experimental features enabled.');
+        }
       }
 
       return api.loginConsentUi.deeplink(

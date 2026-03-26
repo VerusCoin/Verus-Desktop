@@ -1,8 +1,8 @@
-import axios, {AxiosResponse} from 'axios';
+import axios from 'axios';
 import base64url from 'base64url';
 import {BrowserWindow, shell} from 'electron';
 import {
-  GENERIC_ENVELOPE_DEEPLINK_VDXF_KEY,
+  GENERIC_RESPONSE_DEEPLINK_VDXF_KEY,
   LOGIN_CONSENT_REDIRECT_VDXF_KEY,
   LOGIN_CONSENT_RESPONSE_VDXF_KEY,
   LOGIN_CONSENT_WEBHOOK_VDXF_KEY,
@@ -44,58 +44,6 @@ interface MultiURIResult {
 
 type DeeplinkResponse = SingleURIResult | MultiURIResult | {error: string};
 
-interface RequestBody {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  request: any;
-}
-
-interface ApiHeader {
-  app_id: string;
-  builtin: boolean;
-}
-
-interface Request {
-  body: RequestBody;
-  api_header: ApiHeader;
-}
-
-interface Response {
-  send: (data: string) => void;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyApi = any;
-
-// Temporary typing before the rest of the project is converted.
-interface Api {
-  loginConsentUi: {
-    handle_redirect: (
-      responseKey: string,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      response: any,
-      redirectinfo: RedirectInfo
-    ) => Promise<AxiosResponse | null> | null;
-    handle_multi_uris: (
-      responseKey: string,
-      response: string,
-      uris: ResponseURIJson[]
-    ) => Promise<void>;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    deeplink: (deeplink: any, originInfo: OriginInfo) => Promise<any>;
-  };
-  minimizeApp: () => void;
-  startPlugin: (
-    type: string,
-    builtin: boolean,
-    onComplete: (data: DeeplinkResponse) => void,
-    onFinishLoad: (pluginWindow: BrowserWindow) => void,
-    width: number,
-    height: number,
-    frame: boolean
-  ) => void;
-  setPost: (path: string, handler: (req: Request, res: Response) => Promise<void>) => void;
-}
-
 // Wraps shell.openExternal to prevent opening any urls that don't go to the browser for security reasons.
 function safeOpenExternal(url: URL): void {
   if (!['https:', 'http:'].includes(url.protocol)) {
@@ -109,7 +57,8 @@ function safeOpenExternal(url: URL): void {
   }
 }
 
-export = (api: AnyApi): Api => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export = (api: any) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   api.loginConsentUi = {} as any;
 
@@ -117,7 +66,7 @@ export = (api: AnyApi): Api => {
   api.loginConsentUi.respond = async (response: string, uris: ResponseURIJson[]): Promise<void> => {
     if (!uris || uris.length === 0) return;
 
-    // Convert JSON objects to ResponseURI instances and find the first POST URI, fallback to REDIRECT
+    // Convert JSON objects to ResponseURI instances and find the first POST URI, fallback to REDIRECT.
     const responseUris = uris.map(uri => ResponseURI.fromJson(uri));
     const selectedUri =
       responseUris.find(uri => uri.type.eq(ResponseURI.TYPE_POST)) ??
@@ -128,7 +77,7 @@ export = (api: AnyApi): Api => {
     // Deserialize the response from hex string to Buffer
     const responseBuffer = Buffer.from(response, 'hex');
 
-    // Handle POST URI
+    // Handle POST URI.
     if (selectedUri.type.eq(ResponseURI.TYPE_POST)) {
       setTimeout(() => {
         api.minimizeApp();
@@ -146,12 +95,11 @@ export = (api: AnyApi): Api => {
       return;
     }
 
-    // Handle REDIRECT URI
+    // Handle REDIRECT URI.
     if (selectedUri.type.eq(ResponseURI.TYPE_REDIRECT)) {
       const url = new URL(selectedUri.getUriString());
 
-      // TODO: Use the response key when the library is updated
-      url.searchParams.set(GENERIC_ENVELOPE_DEEPLINK_VDXF_KEY.vdxfid, base64url(responseBuffer));
+      url.searchParams.set(GENERIC_RESPONSE_DEEPLINK_VDXF_KEY.vdxfid, base64url(responseBuffer));
       safeOpenExternal(url);
     }
   };
@@ -260,7 +208,8 @@ export = (api: AnyApi): Api => {
 
   api.setPost(
     '/plugin/builtin/verus_login_consent_ui/request',
-    async (req: Request, res: Response) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async (req: any, res: any) => {
       const {request} = req.body;
       const {app_id, builtin} = req.api_header;
 
