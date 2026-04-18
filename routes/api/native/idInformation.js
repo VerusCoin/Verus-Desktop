@@ -281,6 +281,68 @@ module.exports = (api) => {
       res.send(JSON.stringify(retObj));  
     })
   });
- 
+
+  api.native.get_identity_content = (coin, name) => {
+    return new Promise((resolve, reject) => {      
+      api.native.callDaemon(coin, 'getidentitycontent', [name])
+      .then(async (identity) => {
+        if (
+          identity.identity.parent !==
+            "i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV" &&
+            identity.identity.parent !==
+            "iJhCezBExJHvtyH3fGhNnt2NhU4Ztkf2yq" &&
+            // Avoid trying to get the null parent of VRSC or VRSCTEST.
+            identity.identity.parent !== 
+            "i3UXS5QPRQGNRDDqVnyWTnmFCTHDbzmsYk"
+        ) {
+          identity.identity.name = `${identity.identity.name}.${
+            (
+              await api.native.get_currency_definition(
+                coin,
+                identity.identity.parent
+              )
+            ).name
+          }`;
+        }
+
+        try {
+          identity.offers = await api.native.getoffers(
+            new GetOffersRequest(coin, identity.identity.identityaddress, false, false)
+          );
+        } catch (e) {
+          api.log(`Failed to get offers for ${identity.identity.name}`, "get_identity_content");
+          api.log(e, "get_identity_content");
+        }
+
+        resolve(identity)
+      })
+      .catch(err => {
+        reject(err)
+      })
+    });
+  };
+
+  api.setPost('/native/get_identity_content', (req, res, next) => {
+    const { chainTicker, name } = req.body
+
+    api.native.get_identity_content(chainTicker, name)
+    .then((identity) => {
+      const retObj = {
+        msg: 'success',
+        result: identity,
+      };
+  
+      res.send(JSON.stringify(retObj));  
+    })
+    .catch(error => {
+      const retObj = {
+        msg: 'error',
+        result: error.message,
+      };
+  
+      res.send(JSON.stringify(retObj));  
+    })
+  });
+
   return api;
 };
