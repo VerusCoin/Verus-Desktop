@@ -1,7 +1,7 @@
 # Logs
 logs
 *.log
-npm-debug.log*
+pnpm-debug.log*
 
 # Builtin Plugins
 assets/plugins/builtin/*
@@ -65,3 +65,4 @@ react/package.json
 
 # Build files
 dist/*
+out/*
