@@ -3,8 +3,8 @@ const express = require('express');
 let api = express.Router();
 api.rpcCalls = {
   GET: {},
-  POST: {}
-}
+  POST: {},
+};
 
 api.coinsInitializing = {};
 api.startedDaemonRegistry = {};
@@ -18,16 +18,16 @@ api.appRuntimeLog = [];
 
 api.plugins = api.plugins = {
   registry: {},
-  builtin: {}
-}
+  builtin: {},
+};
 api.pluginWindows = {
   registry: {},
-  builtin: {}
-}
+  builtin: {},
+};
 api.pluginOnCompletes = {
   registry: {},
-  builtin: {}
-}
+  builtin: {},
+};
 
 api.lockDownAddCoin = false;
 api._isWatchOnly = false;
@@ -59,9 +59,7 @@ api.electrumCache = {};
 
 api.electrumJSCore = require('./electrumjs/electrumjs.core.js');
 api.electrumJSNetworks = require('./electrumjs/electrumjs.networks.js');
-const {
-  electrumServers,
-} = require('./electrumjs/electrumServers.js');
+const {electrumServers} = require('./electrumjs/electrumServers.js');
 api.electrumServers = electrumServers;
 api.electrumServersV1_4 = {};
 api.nspvProcesses = {};
@@ -77,7 +75,7 @@ api.native = {
     tx_cache: {},
     addr_balance_cache: {},
     currency_definition_cache: {},
-  }
+  },
 };
 
 // eth
@@ -85,15 +83,15 @@ api.eth = {
   wallet: null,
   interface: null,
   temp: {
-    pending_txs: {}
-  }
+    pending_txs: {},
+  },
 };
 
 // erc20
 api.erc20 = {
   wallet: null,
-  contracts: {}
-}
+  contracts: {},
+};
 
 api.setconf = require('../private/setconf.js');
 api.nativeCoind = require('./nativeCoind.js');
@@ -122,6 +120,7 @@ api = require('./api/plugin/builtin/loginconsentui')(api);
 api = require('./api/plugin/builtin/pbaasvisualizer')(api);
 
 api = require('./api/focus')(api);
+api = require('./api/minimize')(api);
 
 // native
 api = require('./api/native/addrBalance.js')(api);
@@ -137,6 +136,7 @@ api = require('./api/native/mininginfo')(api);
 api = require('./api/native/getTransaction.js')(api);
 api = require('./api/native/transactions')(api);
 api = require('./api/native/zoperations')(api);
+api = require('./api/native/zgetencryptionaddress').default(api);
 api = require('./api/native/remove')(api);
 api = require('./api/native/restart')(api);
 api = require('./api/native/send.js')(api);
@@ -147,6 +147,7 @@ api = require('./api/native/idRegistration.js')(api);
 api = require('./api/native/idRevocation.js')(api);
 api = require('./api/native/idUpdate.js')(api);
 api = require('./api/native/idInformation.js')(api);
+api = require('./api/native/updateIdentity.js')(api);
 api = require('./api/native/getCurrencies.js')(api);
 api = require('./api/native/getCurrency.js')(api);
 api = require('./api/native/estimateSendcurrencyFee.js')(api);
@@ -154,6 +155,7 @@ api = require('./api/native/estimateConversion.js')(api);
 api = require('./api/native/getConversionPaths.js')(api);
 api = require('./api/native/currencyGraylist.js')(api);
 api = require('./api/native/idRecovery.js')(api);
+api = require('./api/native/decryptdata.js')(api);
 api = require('./api/native/signdata.js')(api);
 api = require('./api/native/verifydata.js')(api);
 api = require('./api/native/generate.js')(api);
@@ -161,10 +163,7 @@ api = require('./api/native/coinSupply.js')(api);
 api = require('./api/native/blockSubsidy.js')(api);
 api = require('./api/native/shieldcoinbase.js')(api);
 api = require('./api/native/verusid/verusid.js')(api);
-api = require('./api/native/verusid/login/verifyRequest.js')(api);
-api = require('./api/native/verusid/login/signResponse.js')(api);
-api = require('./api/native/verusid/provision/signIdProvisioningRequest.js')(api);
-api = require('./api/native/verusid/provision/verifyIdProvisioningResponse.js')(api);
+api = require('./api/native/credentials/getCredentials').default(api);
 api = require('./api/native/makeoffer')(api);
 api = require('./api/native/getoffers')(api);
 api = require('./api/native/closeoffers')(api);
@@ -176,17 +175,17 @@ api = require('./api/native/getNetworkGraph')(api);
 api = require('./api/native/verusbridge/verusbridge.js')(api);
 api = require('./api/native/verusbridge/vethconf.js')(api);
 
-// lite 
+// lite
 api = require('./api/getSignatureInfo.js')(api);
 
 // general network calls
-api.networkFees = {}
-api.coinSupply = {}
-api = require('./api/network/fees/btc/btcFees')(api)
-api = require('./api/network/fees/networkFees')(api)
-api = require('./api/network/supply/vrsc/vrscCoinSupply')(api)
-api = require('./api/network/supply/zec/zecCoinSupply')(api)
-api = require('./api/network/supply/coinSupply')(api)
+api.networkFees = {};
+api.coinSupply = {};
+api = require('./api/network/fees/btc/btcFees')(api);
+api = require('./api/network/fees/networkFees')(api);
+api = require('./api/network/supply/vrsc/vrscCoinSupply')(api);
+api = require('./api/network/supply/zec/zecCoinSupply')(api);
+api = require('./api/network/supply/coinSupply')(api);
 
 // core
 api = require('./api/binsUtils.js')(api);
@@ -205,6 +204,7 @@ api = require('./api/dlhandler.js')(api);
 api = require('./api/utility_apis/csvExport.js')(api);
 api = require('./api/utility_apis/pbaas')(api);
 api = require('./api/utility_apis/checkUpdates')(api);
+api = require('./api/utility_apis/deeplinkSetup')(api);
 api = require('./api/utility_apis/cache')(api);
 
 // kv
