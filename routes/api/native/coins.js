@@ -1,7 +1,58 @@
 const { shell, dialog } = require('electron');
 const { VERUS_WIKI_WALLET_BACKUPS } = require("../utils/constants/urls");
+const {
+  validateLaunchConfig,
+  validateStartupOptions,
+} = require("./security");
 
 module.exports = (api) => {
+  api.native.validateLaunchConfig = (chainTicker, launchConfig, startupOptions) => {
+    validateLaunchConfig(chainTicker, launchConfig);
+    validateStartupOptions(startupOptions);
+    const ticker = chainTicker.toUpperCase();
+    const knownChain = ticker === "KMD" || api.chainParams[ticker] != null;
+
+    if (knownChain) {
+      const directoryName = ticker === "KMD" ? null : ticker === "VRSCTEST" ? "vrsctest" : ticker;
+      const expectedDirectories = ticker === "KMD"
+        ? { darwin: "Komodo", linux: "komodo", win32: "Komodo" }
+        : {
+            darwin: `Komodo/${directoryName}`,
+            linux: `.komodo/${directoryName}`,
+            win32: `Komodo/${directoryName}`,
+          };
+      const expectedDaemon = ticker === "VRSC" || ticker === "VRSCTEST"
+        ? "verusd"
+        : ticker === "PIRATE"
+        ? "pirated"
+        : "komodod";
+
+      if (launchConfig.daemon !== expectedDaemon ||
+          Object.keys(expectedDirectories).some(
+            (platform) => launchConfig.dirNames[platform] !== expectedDirectories[platform]
+          )) {
+        throw new Error("Daemon binary or data directory does not match the selected chain");
+      }
+    } else {
+      const chainOption = `-chain=${chainTicker.toLowerCase()}`;
+      const launchOptions = launchConfig.startupOptions || [];
+      if (launchConfig.daemon !== "verusd" || !launchOptions.includes(chainOption) || !launchConfig.confName) {
+        throw new Error("Unsupported dynamic chain launch configuration");
+      }
+      const expectedDirectories = {
+        darwin: `Verus/pbaas/${launchConfig.confName}`,
+        linux: `.verus/pbaas/${launchConfig.confName}`,
+        win32: `Verus/pbaas/${launchConfig.confName}`,
+      };
+      if (Object.keys(expectedDirectories).some(
+        (platform) => launchConfig.dirNames[platform] !== expectedDirectories[platform]
+      )) {
+        throw new Error("Dynamic chain data directory does not match its configuration");
+      }
+    }
+    return true;
+  };
+
   api.ignoreNativeBackup = () => {
     const config = api.appConfig 
     
@@ -90,14 +141,15 @@ module.exports = (api) => {
   };
 
   api.native.addCoin = (chainTicker, launchConfig, startupOptions) => {
+    api.native.validateLaunchConfig(chainTicker, launchConfig, startupOptions);
+    const validatedStartupOptions = validateStartupOptions(startupOptions);
+    const validatedLaunchStartupOptions = validateStartupOptions(launchConfig.startupOptions);
     api.native.remindBackup()
     let { daemon, fallbackPort, dirNames, confName, tags } = launchConfig;
 
     let startupParams = [
-      ...(startupOptions == null ? [] : startupOptions),
-      ...(launchConfig.startupOptions == null
-        ? []
-        : launchConfig.startupOptions),
+      ...validatedStartupOptions,
+      ...validatedLaunchStartupOptions,
     ];
 
     // TODO: Remove
@@ -160,7 +212,7 @@ module.exports = (api) => {
 
         res.send(JSON.stringify(retObj));
       });
-  });
+  }, true);
 
   return api;
 };

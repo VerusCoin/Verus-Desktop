@@ -7,30 +7,34 @@ const {
 } = require("verus-typescript-primitives");
 const { pushMessage } = require('../../../ipc/ipc');
 const { ReservedPluginTypes } = require('../../utils/plugin/builtin');
-const { shell } = require('electron')
-const { URL } = require('url');
+const { shell } = require('electron');
 const base64url = require('base64url');
+const {
+  bindRedirectToRequest,
+  createWebhookRequestConfig,
+  parseBrowserRedirectUrl,
+  postWebhookWithDeadline,
+  snapshotRequestRedirects,
+} = require('../../utils/loginConsentSecurity');
 
-module.exports = (api) => {
+module.exports = (api, dependencies = {}) => {
+  const httpClient = dependencies.httpClient || axios;
+  const externalShell = dependencies.shell || shell;
+  const lookup = dependencies.lookup;
+
   api.loginConsentUi = {}
 
-  api.loginConsentUi.handle_redirect = (response, redirectinfo) => {
+  api.loginConsentUi.handle_redirect = async (response, redirectinfo) => {
     const { vdxfkey, uri } = redirectinfo
 
-    const handlers = {
-      [LOGIN_CONSENT_WEBHOOK_VDXF_KEY.vdxfid]: async () => {
-        return await axios.post(
-          uri,
-          response
-        );
-      },
-      [LOGIN_CONSENT_REDIRECT_VDXF_KEY.vdxfid]: () => {
-        const url = new URL(uri)
-
-        // Prevent opening any urls that don't go to the browser.
-        if (!['https:', 'http:'].includes(url.protocol)) {
-          return null;
-        } 
+    const handlers = new Map([
+      [LOGIN_CONSENT_WEBHOOK_VDXF_KEY.vdxfid, async () => {
+        const { url, config } = await createWebhookRequestConfig(uri, { lookup });
+        await postWebhookWithDeadline(httpClient, url, response, config);
+        return null;
+      }],
+      [LOGIN_CONSENT_REDIRECT_VDXF_KEY.vdxfid, async () => {
+        const url = parseBrowserRedirectUrl(uri);
 
         const res = new LoginConsentResponse(response)
         url.searchParams.set(
@@ -38,12 +42,17 @@ module.exports = (api) => {
           base64url(res.toBuffer())
         );
         
-        shell.openExternal(url.toString())
+        await externalShell.openExternal(url.toString())
         return null
-      }
+      }],
+    ]);
+
+    const handler = handlers.get(vdxfkey);
+    if (handler == null) {
+      throw new Error("Unsupported login consent redirect type");
     }
 
-    return handlers[vdxfkey] == null ? null : handlers[vdxfkey]();
+    return handler();
   }
 
   api.loginConsentUi.request = async (
@@ -52,12 +61,17 @@ module.exports = (api) => {
   ) => {
     return new Promise((resolve, reject) => {
       try {
-        api.startPlugin(
+        const requestRedirects = snapshotRequestRedirects(request);
+
+        const pluginStart = api.startPlugin(
           ReservedPluginTypes.VERUS_LOGIN_CONSENT_UI,
           true,
-          (data) => {
+          async (data) => {
             try {
-              if (data.redirect) api.loginConsentUi.handle_redirect(data.response, data.redirect);
+              if (data.redirect) {
+                const boundRedirect = bindRedirectToRequest(data.redirect, requestRedirects);
+                await api.loginConsentUi.handle_redirect(data.response, boundRedirect);
+              }
 
               resolve(data.response);
             } catch(e) {
@@ -78,6 +92,8 @@ module.exports = (api) => {
           550,
           false
         );
+
+        Promise.resolve(pluginStart).catch(reject);
       } catch (e) {
         reject(e);
       }

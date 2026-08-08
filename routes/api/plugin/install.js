@@ -5,6 +5,7 @@ const path = require('path');
 const { unzipFile } = require("../utils/unzip");
 const { verifyHash } = require("../utils/verifySignature");
 const { dialog } = require('electron');
+const { ROOT_SYSTEM_NAME } = require("../utils/constants/dev_options");
 
 module.exports = (api) => {
   api.installPlugin = async (zipPath) => {
@@ -51,9 +52,15 @@ module.exports = (api) => {
       if (infoJson.hash !== fileHash) 
         throw new Error(`Failed to verify plugin archive hash! (${infoJson.hash} != ${fileHash})`)
       
-      // Verify plugin signature with online VerusID verification endpoint
+      // Verify the signature locally through the trusted root-chain daemon.
       try {
-        if (!(await verifyHash(infoJson.hash, infoJson.signer, infoJson.signature))) {
+        if (!(await verifyHash(
+          infoJson.hash,
+          infoJson.signer,
+          infoJson.signature,
+          (id, hash, signature) =>
+            api.native.verify_hash(ROOT_SYSTEM_NAME, id, hash, signature, true)
+        ))) {
           throw new Error("Plugin signature verification failed.")
         }
       } catch(e) {

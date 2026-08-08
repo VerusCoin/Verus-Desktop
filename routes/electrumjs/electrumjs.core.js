@@ -26,6 +26,22 @@ SOFTWARE.
 const tls = require('tls');
 const net = require('net');
 const EventEmitter = require('events').EventEmitter;
+const MAX_MESSAGE_BUFFER = 8 * 1024 * 1024;
+const MAX_MESSAGES_PER_CHUNK = 1000;
+const MAX_PENDING_REQUESTS = 1000;
+const ALLOWED_SUBSCRIPTIONS = new Set([
+  "server.peers.subscribe",
+  "blockchain.numblocks.subscribe",
+  "blockchain.headers.subscribe",
+  "blockchain.address.subscribe",
+  "blockchain.scripthash.subscribe",
+]);
+// Verus ElectrumX servers send these empty, ID-less capability hints while
+// servicing longer requests. They do not carry data or update client state.
+const IGNORED_EMPTY_NOTIFICATIONS = new Set([
+  "blockchain.estimatefee",
+  "blockchain.relayfee",
+]);
 
 const makeRequest = (method, params, id) => {
   return JSON.stringify({
@@ -84,24 +100,66 @@ const createPromiseResult = (resolve, reject, method) => {
   }
 }
 
+const isObjectResult = (result) =>
+  result != null && typeof result === "object" && !Array.isArray(result);
+
+const isValidResultForMethod = (method, result) => {
+  switch (method) {
+  case "server.version":
+    return typeof result === "string" || Array.isArray(result);
+  case "server.banner":
+  case "server.donation_address":
+  case "blockchain.block.header":
+  case "blockchain.block.get_chunk":
+  case "blockchain.transaction.broadcast":
+    return typeof result === "string";
+  case "server.peers.subscribe":
+  case "blockchain.address.get_history":
+  case "blockchain.scripthash.get_history":
+  case "blockchain.address.get_mempool":
+  case "blockchain.address.listunspent":
+  case "blockchain.scripthash.listunspent":
+    return Array.isArray(result);
+  case "blockchain.address.get_balance":
+  case "blockchain.scripthash.get_balance":
+  case "blockchain.block.get_header":
+  case "blockchain.headers.subscribe":
+  case "blockchain.transaction.get_merkle":
+    return isObjectResult(result);
+  case "blockchain.estimatefee":
+  case "blockchain.relayfee":
+    return typeof result === "number" && Number.isFinite(result);
+  case "server.ping":
+    return result === null;
+  case "blockchain.transaction.get":
+    return typeof result === "string" || isObjectResult(result);
+  default:
+    return result !== undefined;
+  }
+};
+
 class MessageParser {
-  constructor(callback) {
+  constructor(callback, maxBufferLength = MAX_MESSAGE_BUFFER) {
     this.buffer = '';
     this.callback = callback;
-    this.recursiveParser = createRecursiveParser(20, '\n');
+    this.maxBufferLength = maxBufferLength;
   }
 
   run(chunk) {
-    this.buffer += chunk;
+    this.buffer += String(chunk);
+    if (this.buffer.length > this.maxBufferLength) {
+      throw new Error("Electrum response exceeded the maximum message buffer");
+    }
 
-    while (true) {
-      const res = this.recursiveParser(0, this.buffer, this.callback);
-
-      this.buffer = res.buffer;
-
-      if (res.code === 0) {
-        break;
+    let delimiterIndex;
+    let parsedMessages = 0;
+    while ((delimiterIndex = this.buffer.indexOf("\n")) !== -1) {
+      if (++parsedMessages > MAX_MESSAGES_PER_CHUNK) {
+        throw new Error("Electrum server sent too many messages in one chunk");
       }
+      const body = this.buffer.slice(0, delimiterIndex);
+      this.buffer = this.buffer.slice(delimiterIndex + 1);
+      this.callback(body, parsedMessages - 1);
     }
   }
 }
@@ -113,34 +171,36 @@ const util = {
   MessageParser,
 };
 
-const getSocket = (protocol, options) => {
+const getSocket = (protocol, host, port, options = {}) => {
   switch (protocol) {
   case 'tcp':
-    return new net.Socket();
+    return net.createConnection({ host, port });
   case 'tls':
-    // todo
   case 'ssl':
-    return new tls.TLSSocket(options);
+    return tls.connect({
+      ...options,
+      host,
+      port,
+      servername: net.isIP(host) ? undefined : host,
+      rejectUnauthorized: true,
+      checkServerIdentity: tls.checkServerIdentity,
+    });
   }
 
   throw new Error('unknown protocol');
 }
 
 const initSocket = (self, protocol, socketTimeout, options) => {
-  const conn = getSocket(protocol, options);
+  const conn = getSocket(protocol, self.host, self.port, options);
 
   conn.setTimeout(socketTimeout);
   conn.on('timeout', () => {
     console.log('socket timeout');
     self.onError(new Error('socket timeout'));
-    self.onClose();
   });
   conn.setEncoding('utf8');
   conn.setKeepAlive(true, 0);
   conn.setNoDelay(true);
-  conn.on('connect', () => {
-    self.onConnect();
-  });
   conn.on('close', (e) => {
     self.onClose(e);
   });
@@ -162,14 +222,18 @@ class Client {
     this.id = 0;
     this.port = port;
     this.host = host;
+    this.protocol = protocol;
+    this.socketTimeout = socketTimeout;
+    this.socketOptions = options || {};
     this.protocolVersion = null;
     this.callbackMessageQueue = {};
     this.subscribe = new EventEmitter();
-    this.conn = initSocket(this, protocol, socketTimeout, options);
+    this.conn = null;
     this.mp = new util.MessageParser((body, n) => {
       this.onMessage(body, n);
     });
     this.status = 0;
+    this.connectPromise = null;
   }
 
   setProtocolVersion(version) {
@@ -177,74 +241,151 @@ class Client {
   }
 
   connect() {
-    if (this.status) {
+    if (this.status === 2) {
       return Promise.resolve();
     }
+    if (this.status === 1 && this.connectPromise) return this.connectPromise;
 
     this.status = 1;
+    this.connectPromise = new Promise((resolve, reject) => {
+      let settled = false;
+      const rejectConnection = (error) => {
+        if (settled) return;
+        settled = true;
+        this.status = 0;
+        reject(error);
+      };
+      const readyEvent = this.protocol === "tcp" ? "connect" : "secureConnect";
+      const closeBeforeReady = () => rejectConnection(new Error("Electrum connection closed before it was ready"));
 
-    return new Promise((resolve, reject) => {
-      const errorHandler = (e) => reject(e)
+      try {
+        this.conn = initSocket(this, this.protocol, this.socketTimeout, this.socketOptions);
+      } catch (e) {
+        rejectConnection(e);
+        return;
+      }
 
-      this.conn.connect(this.port, this.host, () => {
-        this.conn.removeListener('error', errorHandler);
+      this.conn.once("error", rejectConnection);
+      this.conn.once("close", closeBeforeReady);
+      this.conn.once(readyEvent, () => {
+        if (settled) return;
+        if (this.protocol !== "tcp" && !this.conn.authorized) {
+          return rejectConnection(
+            this.conn.authorizationError || new Error("Electrum TLS certificate was not authorized")
+          );
+        }
+
+        settled = true;
+        this.conn.removeListener("error", rejectConnection);
+        this.conn.removeListener("close", closeBeforeReady);
+        // The configured timeout applies to handshakes and individual requests,
+        // not to healthy pooled connections while they are idle.
+        this.conn.setTimeout(0);
+        this.status = 2;
+        this.onConnect();
         resolve();
       });
-      this.conn.on('error', errorHandler);
+    });
+    return this.connectPromise.finally(() => {
+      this.connectPromise = null;
     });
   }
 
   close() {
-    if (!this.status) {
-      return
-    }
-
-    this.conn.end();
-    this.conn.destroy();
     this.status = 0;
+    if (this.conn) {
+      this.conn.destroy();
+      this.conn = null;
+    }
+    this.onClose();
   }
 
   request(method, params) {
-    if (!this.status) {
+    if (this.status !== 2 || !this.conn) {
       return Promise.reject(new Error('Connection error'));
+    }
+    if (typeof method !== "string" || !/^[a-z0-9._]{1,128}$/i.test(method) || !Array.isArray(params)) {
+      return Promise.reject(new Error("Invalid Electrum request"));
+    }
+    if (Object.keys(this.callbackMessageQueue).length >= MAX_PENDING_REQUESTS) {
+      return Promise.reject(new Error("Too many pending Electrum requests"));
     }
 
     return new Promise((resolve, reject) => {
       const id = ++this.id;
       const content = util.makeRequest(method, params, id);
 
-      this.callbackMessageQueue[id] = util.createPromiseResult(resolve, reject, method);
-      this.conn.write(`${content}\n`);
+      this.callbackMessageQueue[id] = {
+        callback: util.createPromiseResult(resolve, reject, method),
+        method,
+        timeout: null,
+      };
+      this.callbackMessageQueue[id].timeout = setTimeout(() => {
+        const pending = this.callbackMessageQueue[id];
+        if (!pending) return;
+
+        delete this.callbackMessageQueue[id];
+        pending.callback(new Error(`Electrum request timed out: ${method}`));
+        this.close();
+      }, this.socketTimeout);
+
+      try {
+        this.conn.write(`${content}\n`);
+      } catch (e) {
+        clearTimeout(this.callbackMessageQueue[id].timeout);
+        delete this.callbackMessageQueue[id];
+        reject(e);
+        this.close();
+      }
     });
   }
 
   response(msg) {
-    const callback = this.callbackMessageQueue[msg.id];
+    if (!Number.isSafeInteger(msg.id) || msg.id <= 0) {
+      throw new Error("Invalid Electrum response id");
+    }
+    const pending = this.callbackMessageQueue[msg.id];
 
-    if (callback) {
-      delete this.callbackMessageQueue[msg.id];
-
-      if (msg.error) {
-        callback(msg.error);
-      } else {
-        callback(null, msg.result);
+    if (pending) {
+      const hasError = Object.prototype.hasOwnProperty.call(msg, "error") && msg.error != null;
+      const hasResult = Object.prototype.hasOwnProperty.call(msg, "result");
+      if (hasError === hasResult) throw new Error(`Invalid response for ${pending.method}`);
+      if (hasResult && !isValidResultForMethod(pending.method, msg.result)) {
+        throw new Error(`Unexpected result type for ${pending.method}`);
       }
+      clearTimeout(pending.timeout);
+      delete this.callbackMessageQueue[msg.id];
+      if (hasError) pending.callback(msg.error);
+      else pending.callback(null, msg.result);
     } else {
-      // can't get callback
+      throw new Error("Electrum response did not match a pending request");
     }
   }
 
   onMessage(body, n) {
-    const msg = JSON.parse(body);
+    try {
+      const msg = JSON.parse(body);
+      if (!msg || typeof msg !== "object" || Array.isArray(msg)) {
+        throw new Error("Invalid Electrum JSON-RPC message");
+      }
 
-    if (msg instanceof Array) {
-      // don't support batch request
-    } else {
       if (msg.id !== void 0) {
         this.response(msg);
       } else {
+        const isKnownEmptyNotification =
+          msg.jsonrpc === "2.0" &&
+          IGNORED_EMPTY_NOTIFICATIONS.has(msg.method) &&
+          msg.params === undefined &&
+          Object.keys(msg).every((key) => key === "jsonrpc" || key === "method");
+        if (isKnownEmptyNotification) return;
+
+        if (!ALLOWED_SUBSCRIPTIONS.has(msg.method) || !Array.isArray(msg.params)) {
+          throw new Error("Unexpected Electrum subscription event");
+        }
         this.subscribe.emit(msg.method, msg.params);
       }
+    } catch (e) {
+      this.onProtocolError(e);
     }
   }
 
@@ -252,23 +393,31 @@ class Client {
   }
 
   onClose() {
+    this.status = 0;
     Object.keys(this.callbackMessageQueue).forEach((key) => {
-      this.callbackMessageQueue[key](new Error('close connect'));
+      clearTimeout(this.callbackMessageQueue[key].timeout);
+      this.callbackMessageQueue[key].callback(new Error('close connect'));
       delete this.callbackMessageQueue[key];
     });
   }
 
   onReceive(chunk) {
-    this.mp.run(chunk);
+    try {
+      this.mp.run(chunk);
+    } catch (e) {
+      this.onProtocolError(e);
+    }
   }
 
   onEnd() {
   }
 
-  onError(e) {    
-    if (e.code && e.code === 'ECONNREFUSED') {
-      this.close()
-    }
+  onProtocolError(e) {
+    this.close();
+  }
+
+  onError(e) {
+    this.close();
   }
 }
 
@@ -298,6 +447,10 @@ class ElectrumJSCore extends Client {
     if (protocol_version) params.push(protocol_version.toString());
 
     return this.request('server.version', params);
+  }
+
+  serverPing() {
+    return this.request('server.ping', []);
   }
 
   serverBanner() {
@@ -360,5 +513,10 @@ class ElectrumJSCore extends Client {
     return this.request('blockchain.transaction.get_merkle', [tx_hash, height]);
   }
 }
+
+ElectrumJSCore.MessageParser = MessageParser;
+ElectrumJSCore.ALLOWED_SUBSCRIPTIONS = ALLOWED_SUBSCRIPTIONS;
+ElectrumJSCore.IGNORED_EMPTY_NOTIFICATIONS = IGNORED_EMPTY_NOTIFICATIONS;
+ElectrumJSCore.isValidResultForMethod = isValidResultForMethod;
 
 module.exports = ElectrumJSCore;

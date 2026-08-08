@@ -1,6 +1,5 @@
 const fs = require('fs-extra');
-const _fs = require('graceful-fs');
-const fsnode = require('fs');
+const { atomicWriteFileSync, validateJsonBuffer } = require("../utils/atomicFile");
 const {
   parseBlock,
   electrumMerkleRoot,
@@ -80,12 +79,14 @@ module.exports = (api) => {
 
   api.loadLocalSPVCache = () => {
     if (fs.existsSync(`${api.paths.agamaDir}/spv-cache.json`)) {
-      const localCache = fs.readFileSync(`${api.paths.agamaDir}/spv-cache.json`, 'utf8');
+      const cacheFile = `${api.paths.agamaDir}/spv-cache.json`;
+      fs.chmodSync(cacheFile, 0o600);
+      const localCache = fs.readFileSync(cacheFile, 'utf8');
 
       try {
         api.electrumCache = JSON.parse(localCache);
       } catch (e) {
-        api.saveLocalSPVCache();
+        api.log(`Existing spv-cache.json is invalid and was left unchanged: ${e.message}`, 'spv.cache');
         api.electrumCache = {};
       }
     } else {
@@ -96,39 +97,10 @@ module.exports = (api) => {
 
   api.saveLocalSPVCache = () => {
     const spvCacheFileName = `${api.paths.agamaDir}/spv-cache.json`;
-
-    _fs.access(api.paths.agamaDir, fs.constants.R_OK, (err) => {
-      if (!err) {
-        const FixFilePermissions = () => {
-          return new Promise((resolve, reject) => {
-            const result = 'spv-cache.json file permissions updated to Read/Write';
-
-            fsnode.chmodSync(spvCacheFileName, '0600');
-
-            setTimeout(() => {
-              resolve(result);
-            }, 1000);
-          });
-        }
-
-        const FsWrite = () => {
-          return new Promise((resolve, reject) => {
-            const result = 'spv-cache.json write file is done';
-
-            const err = fs.writeFileSync(spvCacheFileName,
-                        JSON.stringify(api.electrumCache), 'utf8');
-
-            if (err) return null;
-            fsnode.chmodSync(spvCacheFileName, '0600');
-            setTimeout(() => {
-              resolve(result);
-            }, 2000);
-          });
-        }
-
-        FsWrite()
-        .then(FixFilePermissions());
-      }
+    atomicWriteFileSync(spvCacheFileName, JSON.stringify(api.electrumCache), {
+      backup: true,
+      mode: 0o600,
+      validate: validateJsonBuffer,
     });
   }
 

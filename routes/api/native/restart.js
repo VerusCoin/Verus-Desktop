@@ -1,5 +1,6 @@
 module.exports = (api) => {
   api.native.restartCoin = async (chainTicker, launchConfig, startupOptions) => {
+    api.native.validateLaunchConfig(chainTicker, launchConfig, startupOptions)
     if (!api.coinsInitializing[chainTicker]) {
       api.log('initiating restart for ' + chainTicker, 'restartCoin')
       api.coinsInitializing[chainTicker] = true
@@ -57,7 +58,7 @@ module.exports = (api) => {
 
       res.send(JSON.stringify(retObj));
     })
-  });
+  }, true);
 
   return api;
 };

@@ -1,6 +1,9 @@
 const fs = require('fs-extra');
-const _fs = require('graceful-fs');
-const fsnode = require('fs');
+const {
+  validateElectrumServerList,
+  validateElectrumServersObject,
+} = require("./serverValidation");
+const { atomicWriteFileSync, validateJsonBuffer } = require("../utils/atomicFile");
 
 // map coin names to tickers
 const _ticker = {
@@ -28,22 +31,26 @@ module.exports = (api) => {
         let kvElectrumServersCache = fs.readFileSync(`${api.paths.agamaDir}/kvElectrumServersCache.json`, 'utf8');
 
         // temp edge cases until kv edit is implemented
-        kvElectrumServersCache.replace('tpc', 'tcp');
-        kvElectrumServersCache.replace('kraken.cryptap.us:50004:tcp', 'kraken.cryptap.us:50004:ssl');
-        kvElectrumServersCache.replace('cetus.cryptap.us:50004:tcp', 'cetus.cryptap.us:50004:ssl');
+        kvElectrumServersCache = kvElectrumServersCache.replace('tpc', 'tcp');
+        kvElectrumServersCache = kvElectrumServersCache.replace('kraken.cryptap.us:50004:tcp', 'kraken.cryptap.us:50004:ssl');
+        kvElectrumServersCache = kvElectrumServersCache.replace('cetus.cryptap.us:50004:tcp', 'cetus.cryptap.us:50004:ssl');
 
         kvElectrumServersCache = JSON.parse(kvElectrumServersCache);
 
         if (Object.keys(kvElectrumServersCache).length) {
           for (let key in kvElectrumServersCache) {
             if (api.electrumServers[key]) {
+              const validatedServers = validateElectrumServerList(
+                kvElectrumServersCache[key],
+                { allowTcp: true }
+              );
               if (!api.electrumServers[key].serverList) {
-                api.electrumServers[key].serverList = kvElectrumServersCache[key];
+                api.electrumServers[key].serverList = validatedServers;
               } else {
-                for (let i = 0; i < kvElectrumServersCache[key].length; i++) {
+                for (let i = 0; i < validatedServers.length; i++) {
                   if (!api.electrumServers[key].serverList ||
-                      !api.electrumServers[key].serverList.find((item) => { return item === kvElectrumServersCache[key][i]; })) {
-                    api.electrumServers[key].serverList.push(kvElectrumServersCache[key][i]);
+                      !api.electrumServers[key].serverList.find((item) => { return item === validatedServers[i]; })) {
+                    api.electrumServers[key].serverList.push(validatedServers[i]);
                   }
                 }
               }
@@ -63,101 +70,56 @@ module.exports = (api) => {
 
   api.loadElectrumServersList = () => {
     if (fs.existsSync(`${api.paths.agamaDir}/electrumServers.json`)) {
-      const localElectrumServersList = fs.readFileSync(`${api.paths.agamaDir}/electrumServers.json`, 'utf8');
+      const serverFile = `${api.paths.agamaDir}/electrumServers.json`;
+      fs.chmodSync(serverFile, 0o600);
+      const localElectrumServersList = fs.readFileSync(serverFile, 'utf8');
 
       try {
-        api.electrumServers = JSON.parse(localElectrumServersList);
+        api.electrumServers = validateElectrumServersObject(JSON.parse(localElectrumServersList));
         api.mergeLocalKvElectrumServers();
       } catch (e) {
         api.log(e, 'spv.serverList');
       }
     } else {
-      api.saveElectrumServersList();
+      api.saveElectrumServersList().catch((error) => {
+        api.log(`Unable to create electrumServers.json: ${error.message}`, 'spv.serverList');
+      });
     }
   };
 
-  api.saveElectrumServersList = (list) => {
+  api.saveElectrumServersList = async (list) => {
     const electrumServersListFileName = `${api.paths.agamaDir}/electrumServers.json`;
 
     if (!list) {
       list = api.electrumServers;
     }
 
-    _fs.access(api.paths.agamaDir, fs.constants.R_OK, (err) => {
-      if (!err) {
-        const FixFilePermissions = () => {
-          return new Promise((resolve, reject) => {
-            const result = 'electrumServers.json file permissions updated to Read/Write';
-
-            fsnode.chmodSync(electrumServersListFileName, '0600');
-
-            setTimeout(() => {
-              api.log(result, 'spv.serverList');
-              resolve(result);
-            }, 1000);
-          });
-        }
-
-        const FsWrite = () => {
-          return new Promise((resolve, reject) => {
-            const result = 'electrumServers.json write file is done';
-
-            fs.writeFile(electrumServersListFileName, JSON.stringify(list), 'utf8', (err) => {
-              if (err)
-                return api.log(err, 'spv.serverList');
-            });
-
-            fsnode.chmodSync(electrumServersListFileName, '0600');
-            setTimeout(() => {
-              resolve(result);
-            }, 2000);
-          });
-        }
-
-        FsWrite()
-        .then(FixFilePermissions());
-      }
+    const validated = validateElectrumServersObject(list);
+    atomicWriteFileSync(electrumServersListFileName, JSON.stringify(validated), {
+      backup: true,
+      mode: 0o600,
+      validate: validateJsonBuffer,
     });
+    api.log('electrumServers.json write file is done', 'spv.serverList');
   };
 
-  api.saveKvElectrumServersCache = (list) => {
+  api.saveKvElectrumServersCache = async (list) => {
     const kvElectrumServersListFileName = `${api.paths.agamaDir}/kvElectrumServersCache.json`;
 
-    _fs.access(api.paths.agamaDir, fs.constants.R_OK, (err) => {
-      if (!err) {
-        const FixFilePermissions = () => {
-          return new Promise((resolve, reject) => {
-            const result = 'kvElectrumServersCache.json file permissions updated to Read/Write';
-
-            fsnode.chmodSync(kvElectrumServersListFileName, '0600');
-
-            setTimeout(() => {
-              api.log(result, 'spv.serverList');
-              resolve(result);
-            }, 1000);
-          });
-        }
-
-        const FsWrite = () => {
-          return new Promise((resolve, reject) => {
-            const result = 'kvElectrumServersCache.json write file is done';
-
-            fs.writeFile(kvElectrumServersListFileName, JSON.stringify(list), 'utf8', (err) => {
-              if (err)
-                return api.log(err, 'spv.serverList');
-            });
-
-            fsnode.chmodSync(kvElectrumServersListFileName, '0600');
-            setTimeout(() => {
-              resolve(result);
-            }, 2000);
-          });
-        }
-
-        FsWrite()
-        .then(FixFilePermissions());
-      }
+    if (!list || typeof list !== "object" || Array.isArray(list)) {
+      throw new Error("Invalid Electrum KV server cache");
+    }
+    const validated = {};
+    for (const [coin, servers] of Object.entries(list)) {
+      if (!/^[0-9a-z._-]{1,64}$/i.test(coin)) throw new Error("Invalid Electrum coin ticker");
+      validated[coin] = validateElectrumServerList(servers, { allowTcp: true });
+    }
+    atomicWriteFileSync(kvElectrumServersListFileName, JSON.stringify(validated), {
+      backup: true,
+      mode: 0o600,
+      validate: validateJsonBuffer,
     });
+    api.log('kvElectrumServersCache.json write file is done', 'spv.serverList');
   };
 
   return api;
