@@ -1,7 +1,6 @@
 const fs = require('fs-extra');
-const _fs = require('graceful-fs');
-const fsnode = require('fs');
 const path = require('path')
+const { atomicWriteFileSync, validateJsonBuffer } = require("../utils/atomicFile");
 
 module.exports = (api) => {
   api.loadLocalPluginRegistry = () => {
@@ -9,10 +8,12 @@ module.exports = (api) => {
 
     if (fs.existsSync(registryLocation)) {
       try {
+        fs.chmodSync(registryLocation, 0o600);
         return JSON.parse(fs.readFileSync(registryLocation, 'utf8'))
       } catch(e) {
         api.log('Unable to load local plugins.json, error with following message:', 'plugins');
         api.log(e.message, 'plugins');
+        return {};
       }
     }
 
@@ -24,17 +25,11 @@ module.exports = (api) => {
     const registryLocation = `${api.paths.agamaDir}/plugins.json`;
 
     try {
-      try {
-        _fs.accessSync(api.paths.agamaDir, fs.constants.R_OK)
-      } catch (e) {
-        if (e.code == 'EACCES') {
-          fsnode.chmodSync(registryLocation, '0600');
-        } else if (e.code === 'ENOENT') {
-          api.log('plugins directory not found', 'plugins');
-        }
-      }
-
-      fs.writeFileSync(registryLocation, JSON.stringify(plugins, null, 2), 'utf8');
+      atomicWriteFileSync(registryLocation, JSON.stringify(plugins, null, 2), {
+        backup: true,
+        mode: 0o600,
+        validate: validateJsonBuffer,
+      });
 
       api.log('plugins.json write file is done', 'plugins');
       api.log(`app plugins.json file is created successfully at: ${api.paths.agamaDir}`, 'plugins');

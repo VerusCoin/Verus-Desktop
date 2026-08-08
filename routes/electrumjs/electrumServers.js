@@ -259,6 +259,19 @@ const _electrumServersExtend = {
 
 let electrumServers = Object.assign({}, _electrumServers, _electrumServersExtend);
 
+// The official Verus Electrum hosts expose certificate-validated TLS on 17486.
+// Never fall back to their plaintext 17485 endpoints.
+if (electrumServers.vrsc) {
+  electrumServers.vrsc = {
+    ...electrumServers.vrsc,
+    serverList: [
+      "el0.veruscoin.io:17486:ssl",
+      "el1.veruscoin.io:17486:ssl",
+      "el2.veruscoin.io:17486:ssl",
+    ],
+  };
+}
+
 for (let i = 0; i < disableCoins.length; i++) {
   if (electrumServers[disableCoins[i]]) {
     delete electrumServers[disableCoins[i]];

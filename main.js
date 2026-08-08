@@ -22,6 +22,13 @@ if (!hasLock) {
   const osPlatform = os.platform();
   const express = require("express");
   const bodyParser = require("body-parser");
+  const {
+    createDevCorsMiddleware,
+    createHostValidationMiddleware,
+    isLoopbackAddress,
+    isAllowedSocketOrigin,
+    requireJsonPost,
+  } = require("./routes/security/http");
   const { formatBytes } = require("agama-wallet-lib/src/utils");
   const { dialog } = require("electron");
   require("@electron/remote/main").initialize();
@@ -42,6 +49,7 @@ if (!hasLock) {
 
   //TODO: add more things here
   const { appConfig } = api;
+  const isDevMode = appConfig.general.main.dev || process.argv.indexOf("devmode") > -1;
 
   const appBasicInfo = {
     name: "Verus Desktop Testnet",
@@ -93,18 +101,8 @@ if (!hasLock) {
 
   //api.setConfKMD();
 
-  guiapp.use((req, res, next) => {
-    if (!appConfig.general.main.dev && !(process.argv.indexOf("devmode") > -1)) {
-      res.header("Access-Control-Allow-Origin", "http://localhost:3000");
-    } else {
-      res.header("Access-Control-Allow-Origin", "*");
-    }
-
-    res.header("Access-Control-Allow-Headers", "X-Requested-With,content-type");
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "GET, POST");
-    next();
-  });
+  guiapp.use(createHostValidationMiddleware(appConfig.general.main.agamaPort));
+  guiapp.use(createDevCorsMiddleware(isDevMode));
 
   // preload js
   const _setImmediate = setImmediate;
@@ -134,32 +132,35 @@ if (!hasLock) {
     });
   }
 
-  guiapp.use(bodyParser.json({ limit: "500mb" })); // support json encoded bodies
-  guiapp.use(
-    bodyParser.urlencoded({
-      limit: "500mb",
-      extended: true,
-    })
-  ); // support encoded bodies
-
   guiapp.get("/", (req, res) => {
     res.send("Verus app server");
   });
 
   const guipath = path.join(__dirname, "/gui");
   guiapp.use("/gui", express.static(guipath));
-  guiapp.use("/api", api);
+  guiapp.use("/api", requireJsonPost, bodyParser.json({ limit: "10mb" }), api);
 
   const server = require("http").createServer(guiapp);
-  let io = require("socket.io")(server, {
-    cors: {
-      origin:
-        appConfig.general.main.dev || process.argv.indexOf("devmode") > -1
-          ? "http://localhost:3000"
-          : null,
-      methods: ["GET", "POST"],
-    },
-  });
+  const socketOptions = {
+    allowRequest: (request, callback) => callback(
+      null,
+      isAllowedSocketOrigin(
+        request.headers.origin,
+        appConfig.general.main.agamaPort,
+        isDevMode
+      )
+    ),
+    ...(isDevMode
+      ? {
+        cors: {
+          origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+          methods: ["GET", "POST"],
+          credentials: true,
+        },
+      }
+      : {}),
+  };
+  let io = require("socket.io")(server, socketOptions);
 
   // Set httpServer timeout to 10 minutes
   io.httpServer.timeout = 600000;
@@ -331,12 +332,31 @@ if (!hasLock) {
                 "init"
               );
 
-              server.listen(appConfig.general.main.agamaPort, () => {
-                api.log(
-                  `guiapp and sockets.io are listening on port ${appConfig.general.main.agamaPort}`,
-                  "init"
-                );
-              });
+              try {
+                await new Promise((listenResolve, listenReject) => {
+                  const onListenError = (listenError) => listenReject(listenError);
+                  server.once("error", onListenError);
+                  server.listen(appConfig.general.main.agamaPort, "127.0.0.1", () => {
+                    server.removeListener("error", onListenError);
+                    const boundAddress = server.address();
+                    if (!boundAddress || !isLoopbackAddress(boundAddress.address)) {
+                      server.close();
+                      return listenReject(
+                        new Error("Refusing to run the API server on a non-loopback address")
+                      );
+                    }
+
+                    api.log(
+                      `guiapp and sockets.io are listening on port ${appConfig.general.main.agamaPort}`,
+                      "init"
+                    );
+                    return listenResolve();
+                  });
+                });
+              } catch (listenError) {
+                reject(listenError);
+                return;
+              }
 
               api.setIO(io); // pass sockets object to api router
               api.setVar("appBasicInfo", appBasicInfo);
@@ -457,9 +477,9 @@ if (!hasLock) {
     });
 
     mainWindow.loadURL(
-      appConfig.general.main.dev || process.argv.indexOf("devmode") > -1
+      isDevMode
         ? "http://localhost:3000"
-        : `file://${__dirname}/gui/Verus-Desktop-GUI/react/build/index.html`
+        : `http://127.0.0.1:${appConfig.general.main.agamaPort}/gui/Verus-Desktop-GUI/react/build/`
     );
 
     mainWindow.webContents.on("devtools-opened", () => {
@@ -586,4 +606,3 @@ if (!hasLock) {
     }
   });
 }
-

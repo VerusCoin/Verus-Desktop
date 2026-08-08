@@ -118,9 +118,9 @@ module.exports = (api) => {
       });
 
       if (api.appConfig.general.main.dev || process.argv.indexOf('devmode') > -1) {
-        pluginWindow.loadURL(`http://localhost:${plugin.devPort}`);
+        await pluginWindow.loadURL(`http://localhost:${plugin.devPort}`);
       } else {
-        pluginWindow.loadFile(plugin.index);
+        await pluginWindow.loadFile(plugin.index);
       }
     } catch (e) {
       api.log(`Error starting plugin with id ${id}.`, "startPlugin");
