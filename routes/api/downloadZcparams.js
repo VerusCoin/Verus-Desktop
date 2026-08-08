@@ -13,7 +13,6 @@ const fileSizes = {
   spend: 47958396,
   groth16: 725523612,
 };
-let _inMemCheckList;
 
 module.exports = (api) => {
   api.zcashParamsExist = () => {
@@ -80,7 +79,6 @@ module.exports = (api) => {
       _checkList.errors = true;
     }
 
-    _inMemCheckList = _checkList;
     return _checkList;
   }
 
@@ -121,11 +119,26 @@ module.exports = (api) => {
     // const dlLocation = api.paths.zcashParamsDir + '/test';
     const dlLocation = api.paths.zcashParamsDir;
     const dlOption = req.body.dloption;
-    let _keysProgress = {
-      output: 0,
-      spend: 0,
-      groth16: 0,
-    };
+    const hasSelectedSource = typeof dlOption === 'string' &&
+      Object.prototype.hasOwnProperty.call(zcashParamsSources, dlOption);
+
+    if (!hasSelectedSource) {
+      res.send(JSON.stringify({
+        msg: 'error',
+        result: 'Invalid Zcash parameters download source',
+      }));
+      return;
+    }
+
+    const selectedSource = zcashParamsSources[dlOption];
+    const downloadKeys = Object.keys(selectedSource);
+    const numFiles = downloadKeys.length;
+    const initialCheckList = api.zcashParamsExist();
+    const _keysProgress = downloadKeys.reduce((progress, key) => {
+      progress[key] = 0;
+      return progress;
+    }, {});
+    let downloadFailed = false;
 
     const successObj = {
       msg: 'success',
@@ -135,38 +148,75 @@ module.exports = (api) => {
     res.send(JSON.stringify(successObj));
 
     const checkProgress = () => {
-      return [
-        _keysProgress.output,
-        _keysProgress.spend,
-        _keysProgress.groth16
-      ]
-      .reduce((a, b) => a + b, 0);
+      return Object.values(_keysProgress).reduce((a, b) => a + b, 0);
     };
 
-    const numFiles = Object.keys(zcashParamsSources).length;
+    const markFileDone = (key) => {
+      api.io.emit('zcparams', {
+        msg: {
+          type: 'zcpdownload',
+          file: key,
+          progress: 100,
+          status: 'done',
+        },
+      });
+      _keysProgress[key] = 100;
 
-    for (let key in zcashParamsSources[dlOption]) {
-      if (!_inMemCheckList[`${key}Key`] ||
-          (_inMemCheckList[`${key}Key`] && !_inMemCheckList[`${key}KeySize`])) {
+      if (!downloadFailed && checkProgress() === (numFiles * 100)) {
+        api.io.emit('zcparams', {
+          msg: {
+            type: 'zcpdownload',
+            file: 'all',
+            progress: 100,
+            status: 'done',
+          },
+        });
+        api.log('zcash params downloaded', 'native.zcashParams');
+      }
+
+      api.log(`zcash params dl progress ${checkProgress() / numFiles}%`, 'native.zcashParams');
+    };
+
+    const markFileError = (key, message) => {
+      downloadFailed = true;
+      api.io.emit('zcparams', {
+        msg: {
+          type: 'zcpdownload',
+          file: key,
+          status: 'error',
+          message,
+          progress: _keysProgress[key],
+        },
+      });
+      api.log(`${key} download failed: ${message}`, 'native.zcashParams');
+    };
+
+    for (let key of downloadKeys) {
+      if (!initialCheckList[`${key}Key`] || !initialCheckList[`${key}KeySize`]) {
+        let lastReportedProgress = 0;
+
         api.downloadFile({
-          remoteFile: zcashParamsSources[dlOption][key],
+          remoteFile: selectedSource[key],
           localFile: key === 'spend' || key === 'output' ? `${dlLocation}/sapling-${key}.params` : `${dlLocation}/sprout-${key}.params`,
+          expectedBytes: fileSizes[key],
           onProgress: (received, total) => {
-            const percentage = (received * 100) / total;
+            if (!Number.isFinite(total) || total <= 0) return;
 
-            if (percentage.toString().indexOf('.10') > -1) {
-              api.io.emit('zcparams', {
-                msg: {
-                  type: 'zcpdownload',
-                  status: 'progress',
-                  file: key,
-                  bytesTotal: total,
-                  bytesReceived: received,
-                  progress: percentage,
-                },
-              });
-              // api.log(`${key} ${percentage}% | ${received} bytes out of ${total} bytes.`);
-            }
+            const percentage = Math.min(99, Math.floor((received * 100) / total));
+            if (!Number.isFinite(percentage) || percentage <= lastReportedProgress) return;
+
+            lastReportedProgress = percentage;
+            _keysProgress[key] = percentage;
+            api.io.emit('zcparams', {
+              msg: {
+                type: 'zcpdownload',
+                status: 'progress',
+                file: key,
+                bytesTotal: total,
+                bytesReceived: received,
+                progress: percentage,
+              },
+            });
           }
         })
         .then(() => {
@@ -174,79 +224,18 @@ module.exports = (api) => {
 
           api.log(`${key} dl done, run size check`);
 
-          if (checkZcashParams.error) {
-            api.io.emit('zcparams', {
-              msg: {
-                type: 'zcpdownload',
-                file: key,
-                status: 'error',
-                message: 'size mismatch',
-                progress: 100,
-              },
-            });
-            _keysProgress[key] = 100;
-
-            if (checkProgress() === (numFiles * 100)) {
-              api.io.emit('zcparams', {
-                msg: {
-                  type: 'zcpdownload',
-                  file: 'all',
-                  progress: 100,
-                  status: 'done',
-                },
-              });
-              api.log(`zcash params downloaded`, 'native.zcashParams');
-            }
-            api.log(`zcash params dl progress ${checkProgress() / 5}%`, 'native.zcashParams');
+          if (!checkZcashParams[`${key}Key`] || !checkZcashParams[`${key}KeySize`]) {
+            markFileError(key, 'size mismatch');
           } else {
-            api.io.emit('zcparams', {
-              msg: {
-                type: 'zcpdownload',
-                file: key,
-                progress: 100,
-                status: 'done',
-              },
-            });
-            _keysProgress[key] = 100;
-
-            if (checkProgress() === (numFiles * 100)) {
-              api.io.emit('zcparams', {
-                msg: {
-                  type: 'zcpdownload',
-                  file: 'all',
-                  progress: 100,
-                  status: 'done',
-                },
-              });
-              api.log(`zcash params downloaded`, 'native.zcashParams');
-            }
-            api.log(`zcash params dl progress ${checkProgress() / numFiles}%`, 'native.zcashParams');
+            markFileDone(key);
             api.log(`file ${key} succesfully downloaded`, 'native.zcashParams');
           }
+        })
+        .catch((error) => {
+          markFileError(key, error && error.message ? error.message : String(error));
         });
       } else {
-        api.io.emit('zcparams', {
-          msg: {
-            type: 'zcpdownload',
-            file: key,
-            progress: 100,
-            status: 'done',
-          },
-        });
-        _keysProgress[key] = 100;
-
-        if (checkProgress() === (numFiles * 100)) {
-          api.io.emit('zcparams', {
-            msg: {
-              type: 'zcpdownload',
-              file: 'all',
-              progress: 100,
-              status: 'done',
-            },
-          });
-          api.log(`zcash params downloaded`, 'native.zcashParams');
-        }
-        api.log(`zcash params dl progress ${checkProgress() / numFiles}%`, 'native.zcashParams');
+        markFileDone(key);
         api.log('skip dl ' + key, 'native.zcashParams');
       }
     }
