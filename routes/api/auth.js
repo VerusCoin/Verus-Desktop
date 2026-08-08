@@ -1,13 +1,16 @@
 const passwdStrength = require('passwd-strength');
 const CryptoJS = require("crypto-js");
 var blake2b = require('blake2b');
-const { randomBytes } = require('crypto');
+const { randomBytes, timingSafeEqual } = require('crypto');
+
+const TOKEN_WINDOW_MS = 10 * 60 * 1000;
+const TOKEN_HEX_LENGTH = 128;
 
 const decrypt = (data, key) => CryptoJS.AES.decrypt(data, key).toString(CryptoJS.enc.Utf8);
 const encrypt = (data, key) => CryptoJS.AES.encrypt(data, key).toString()
 
 module.exports = (api) => {
-  api.seenTimes = []
+  api.seenTimes = new Map()
 
   api.permissionlessPaths = [
     'help',
@@ -17,27 +20,42 @@ module.exports = (api) => {
   api.checkToken = (validity_key, path, time, app_info) => {
     if (api.permissionlessPaths.includes(path)) return true;
 
-    const { id, builtin } = app_info;
-    var hash = blake2b(64);
+    const { id, builtin } = app_info || {};
+    const now = Date.now();
 
-    if (api.seenTimes.includes(time)) throw new Error("Cannot repeat call");
-    else if (Math.abs(new Date().valueOf() - time) > 600000)
-      throw new Error("Cannot make expired call.");
-    else {
-      let newSeenTimes = [...api.seenTimes, time];
-      newSeenTimes = newSeenTimes.filter((x) => x > time - 600000 && x < time + 600000);
-
-      if (builtin) {
-        const token = api.BuiltinSecret;
-
-        hash.update(Buffer.from(time.toString()));
-        hash.update(Buffer.from(token));
-        hash.update(Buffer.from(path));
-        hash.update(Buffer.from(id));
-      }
-
-      return hash.digest("hex") === validity_key;
+    if (builtin !== true || typeof api.BuiltinSecret !== "string" || !api.BuiltinSecret) {
+      return false;
     }
+    if (typeof id !== "string" || !id || typeof path !== "string" || !path) return false;
+    if (!Number.isSafeInteger(time) || Math.abs(now - time) > TOKEN_WINDOW_MS) {
+      throw new Error("Cannot make expired call.");
+    }
+    if (typeof validity_key !== "string" ||
+        validity_key.length !== TOKEN_HEX_LENGTH ||
+        !/^[0-9a-f]+$/i.test(validity_key)) {
+      return false;
+    }
+
+    for (const [seenToken, seenAt] of api.seenTimes) {
+      if (now - seenAt > TOKEN_WINDOW_MS) api.seenTimes.delete(seenToken);
+    }
+
+    const hash = blake2b(64);
+    hash.update(Buffer.from(String(time)));
+    hash.update(Buffer.from(api.BuiltinSecret));
+    hash.update(Buffer.from(path));
+    hash.update(Buffer.from(id));
+
+    const expected = Buffer.from(hash.digest("hex"), "hex");
+    const received = Buffer.from(validity_key, "hex");
+    const valid = expected.length === received.length && timingSafeEqual(expected, received);
+
+    if (valid) {
+      const tokenKey = received.toString("hex");
+      if (api.seenTimes.has(tokenKey)) throw new Error("Cannot repeat call");
+      api.seenTimes.set(tokenKey, now);
+    }
+    return valid;
   };
 
   api.setPost = (url, handler, forceEncryption = false) => {
@@ -82,18 +100,39 @@ module.exports = (api) => {
           payload = JSON.parse(decrypt(req.body.payload, shieldKey))
         }
         
-        handler({...req, body: payload, api_header: { app_id: req.body.app_id, builtin }}, {
-          ...res,
-          send: async (data) => {
-            res.send(
-              JSON.stringify(
-                encrypted
-                  ? { payload: encrypt(data, shieldKey) }
-                  : { payload: data }
-              )
-            );
-          }
-        }, next)
+        const wrappedSend = async (data) => {
+          res.send(
+            JSON.stringify(
+              encrypted
+                ? { payload: encrypt(data, shieldKey) }
+                : { payload: data }
+            )
+          );
+        };
+        let handlerResponse;
+        handlerResponse = new Proxy(res, {
+          get(target, property) {
+            if (property === "send") return wrappedSend;
+            const value = Reflect.get(target, property, target);
+            if (typeof value !== "function") return value;
+
+            return (...args) => {
+              const result = Reflect.apply(value, target, args);
+              // Preserve Express method chaining without allowing a chained
+              // .send() to bypass response encryption.
+              return result === target ? handlerResponse : result;
+            };
+          },
+          set(target, property, value) {
+            return Reflect.set(target, property, value, target);
+          },
+        });
+
+        await handler(
+          {...req, body: payload, api_header: { app_id: req.body.app_id, builtin }},
+          handlerResponse,
+          next
+        );
       } catch(e) {  
         api.log('HTTP POST error', 'setPost')
         api.log(e, 'setPost')

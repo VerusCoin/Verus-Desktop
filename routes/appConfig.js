@@ -68,6 +68,7 @@ const appConfig = {
         cache: false,
         socketTimeout: 10000,
         customServers: false,
+        allowInsecureTcp: false,
         maxTxListLength: 10,
         csvListtransactionsMaxLength: 400,
         syncServerListFromKv: false
@@ -182,6 +183,11 @@ const appConfig = {
           type: "checkbox",
           displayName: "Custom electrum servers",
           info: "Use custom electrum servers."
+        },
+        allowInsecureTcp: {
+          type: "checkbox",
+          displayName: "Allow insecure Electrum TCP",
+          info: "Warning: permits unencrypted, unauthenticated Electrum connections. Leave disabled unless you understand the privacy and integrity risks."
         },
         maxTxListLength: {
           type: "number_input",

@@ -8,6 +8,7 @@ const {
 } = require("../utils/rpc/rpcStatusCodes");
 const RpcError = require('../utils/rpc/rpcError');
 const { VerusdRpcInterface } = require('verusd-rpc-ts-client');
+const { isAllowedRpcMethod, isValidChainTicker } = require("./security");
 
 module.exports = (api) => {
   api.native.getRpcInterface = (coin, systemid) => {
@@ -101,6 +102,13 @@ module.exports = (api) => {
     const coin = req.body.chainTicker;
     const cmd = req.body.cmd;
 
+    if (!isValidChainTicker(coin) || !isAllowedRpcMethod(cmd) || !Array.isArray(params)) {
+      return res.send(JSON.stringify({
+        msg: "error",
+        result: "Invalid chain or daemon RPC request",
+      }));
+    }
+
     api.native.callDaemon(coin, cmd, params)
     .then((rpcRes) => {
       const retObj = {
@@ -118,7 +126,7 @@ module.exports = (api) => {
   
       res.send(JSON.stringify(retObj));  
     })
-  });
+  }, true);
 
   api.native.convertRpcJson = (json) => {
     if (json === 'Work queue depth exceeded') {

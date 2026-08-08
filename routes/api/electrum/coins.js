@@ -1,5 +1,6 @@
 const { getRandomIntInclusive } = require('agama-wallet-lib/src/utils');
-const fs = require('fs-extra');
+const { dialog } = require("electron");
+const { validateElectrumServerList } = require("./serverValidation");
 
 module.exports = (api) => {
   api.findCoinName = (network) => {
@@ -11,12 +12,26 @@ module.exports = (api) => {
   }
 
   api.addElectrumCoin = async(coin, customServers = [], tags = [], txFee) => {
+    if (typeof coin !== "string" || !/^[0-9a-z._-]{1,64}$/i.test(coin)) {
+      throw new Error("Invalid Electrum coin ticker");
+    }
+    if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== "string" || !/^[0-9a-z_-]{1,64}$/i.test(tag))) {
+      throw new Error("Invalid Electrum coin tags");
+    }
     coin = coin.toLowerCase();
+    const allowTcp = api.appConfig.general.electrum.allowInsecureTcp === true;
     
-    if (customServers.length > 0 && txFee != null && !isNaN(txFee) && api.electrumServers[coin] == null) {
+    if (customServers.length > 0) {
+      customServers = validateElectrumServerList(customServers, { allowTcp });
+      if (txFee == null || !Number.isFinite(Number(txFee)) || Number(txFee) < 0 || Number(txFee) > 1e9) {
+        throw new Error("Invalid Electrum transaction fee");
+      }
+    }
+
+    if (customServers.length > 0 && api.electrumServers[coin] == null) {
       api.electrumServers[coin] = {
         serverList: customServers,
-        txfee: txFee
+        txfee: Number(txFee)
       }
     }
 
@@ -25,6 +40,10 @@ module.exports = (api) => {
     // select random server
     let randomServer;
     let servers = api.electrumServers[coin] ? api.electrumServers[coin].serverList : []
+    servers = validateElectrumServerList(servers, {
+      allowTcp,
+      filterTcp: !allowTcp,
+    });
     
     // pick a random server to communicate with
     if (servers &&
@@ -42,6 +61,8 @@ module.exports = (api) => {
       }
     }
     
+    if (!randomServer) throw new Error("No valid Electrum server is available");
+
     api.electrum.coinData[coin] = {
       name: coin,
       server: {
@@ -74,24 +95,34 @@ module.exports = (api) => {
   }
 
   api.setPost('/electrum/coins/activate', async(req, res, next) => {
-    const { chainTicker, launchConfig } = req.body
-    const { customServers, tags, txFee } = launchConfig
+    try {
+      const { chainTicker, launchConfig } = req.body
+      if (!launchConfig || typeof launchConfig !== "object") {
+        throw new Error("Missing Electrum launch configuration");
+      }
+      const { customServers = [], tags = [], txFee } = launchConfig
 
-    const result = await api.addElectrumCoin(
-      chainTicker,
-      customServers || [],
-      tags,
-      txFee,
-      false
-    );
+      if (customServers.length > 0) {
+        validateElectrumServerList(customServers, {
+          allowTcp: api.appConfig.general.electrum.allowInsecureTcp === true,
+        });
+        const confirmation = await dialog.showMessageBox({
+          type: "warning",
+          title: "Use Custom Electrum Servers?",
+          message: `Use caller-supplied Electrum servers for ${chainTicker}? These servers can observe wallet addresses and provide untrusted chain data.`,
+          buttons: ["Cancel", "Use Servers"],
+          defaultId: 0,
+          cancelId: 0,
+        });
+        if (confirmation.response !== 1) throw new Error("Custom Electrum server activation cancelled");
+      }
 
-    const retObj = {
-      msg: 'success',
-      result,
-    };
-
-    res.send(JSON.stringify(retObj));
-  });
+      const result = await api.addElectrumCoin(chainTicker, customServers, tags, txFee);
+      res.send(JSON.stringify({ msg: 'success', result }));
+    } catch (e) {
+      res.send(JSON.stringify({ msg: "error", result: e.message }));
+    }
+  }, true);
 
   api.checkCoinConfigIntegrity = (coin) => {
     let _totalCoins = 0;

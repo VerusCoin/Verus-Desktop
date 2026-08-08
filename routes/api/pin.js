@@ -1,17 +1,26 @@
 const fs = require('fs-extra');
 const passwdStrength = require('passwd-strength');
 const bitcoin = require('bitgo-utxo-lib');
-const aes256 = require('nodejs-aes256');
-const iocane = require('iocane');
 const deriveScalarFromSeed = require('./utils/auth/scalar');
-const session = iocane.createSession()
-  .use('cbc')
-  .setDerivationRounds(300000);
-
-const encrypt = session.encrypt.bind(session);
-const decrypt = session.decrypt.bind(session);
+const path = require("path");
+const {
+  assertAttemptAllowed,
+  isValidPinFileName,
+  recordFailedAttempt,
+  resolvePinFile,
+} = require("./utils/pinSecurity");
+const {
+  decryptPinPayload,
+  encryptPinPayload,
+  isIocanePayload,
+  readPinFile,
+  storeNewPinFile,
+} = require("./utils/pinFile");
 
 module.exports = (api) => {
+  api.pinDecryptAttempts = new Map();
+  const pinDirectory = () => path.join(api.paths.agamaDir, "shepherd", "pin");
+
   /*
    *  type: POST
    *  params: none
@@ -34,11 +43,8 @@ module.exports = (api) => {
       });
 
       const keyPair = new bitcoin.ECPair(dBigi, null, { network: api.getNetworkData('btc') });
-      const keys = {
-        pub: keyPair.getAddress(),
-        priv: keyPair.toWIF(),
-      };
-      const pubkey = req.body.pubkey ? req.body.pubkey : keyPair.getAddress();
+      const derivedPubkey = keyPair.getAddress();
+      const pubkey = req.body.pubkey || derivedPubkey;
 
       if (passwdStrength(_pin) < 29) {
         api.log('seed storage weak pin!', 'pin');
@@ -50,38 +56,26 @@ module.exports = (api) => {
 
         res.send(JSON.stringify(retObj));
       } else {
-        const _customPinFilenameTest = /^[0-9a-zA-Z-_]+$/g;
-
-        if (_customPinFilenameTest.test(pubkey)) {
-          encrypt(req.body.string, _pin)
-          .then((encryptedString) => {
-            fs.writeFile(`${api.paths.agamaDir}/shepherd/pin/${pubkey}.pin`, encryptedString, (err) => {
-              if (err) {
-                api.log('error writing pin file', 'pin');
-
-                const retObj = {
-                  msg: 'error',
-                  result: 'Error writing pin file',
-                };
-
-                res.send(JSON.stringify(retObj));
-              } else {
-                const retObj = {
-                  msg: 'success',
-                  result: pubkey,
-                };
-
-                res.send(JSON.stringify(retObj));
-              }
-            });
-          });
-        } else {
-          const retObj = {
+        if (!isValidPinFileName(pubkey) || pubkey !== derivedPubkey) {
+          return res.send(JSON.stringify({
             msg: 'error',
-            result: 'pin file name can only contain alphanumeric characters, dash "-" and underscore "_"',
-          };
+            result: 'Pin file name must match the encrypted seed',
+          }));
+        }
 
-          res.send(JSON.stringify(retObj));
+        try {
+          const encryptedString = await encryptPinPayload(_str, _pin);
+          const pinFile = resolvePinFile(pinDirectory(), pubkey);
+          await storeNewPinFile(pinFile, encryptedString, _pin, _str);
+          return res.send(JSON.stringify({ msg: 'success', result: pubkey }));
+        } catch (error) {
+          api.log(`Unable to save encrypted seed: ${error.message}`, 'pin');
+          return res.send(JSON.stringify({
+            msg: 'error',
+            result: error.code === "PIN_FILE_EXISTS"
+              ? error.message
+              : 'Unable to safely save encrypted seed',
+          }));
         }
       }
     } else {
@@ -96,7 +90,7 @@ module.exports = (api) => {
       let _errorParamsList = [];
 
       for (let i = 0; i < _paramsList.length; i++) {
-        if (!req.query[_paramsList[i]]) {
+        if (!req.body[_paramsList[i]]) {
           _errorParamsList.push(_paramsList[i]);
         }
       }
@@ -106,90 +100,72 @@ module.exports = (api) => {
     }
   }, true);
 
-  api.setPost('/decryptkey', (req, res, next) => {
+  api.setPost('/decryptkey', async (req, res, next) => {
     const _pubkey = req.body.pubkey;
     const _key = req.body.key;
 
-    if (_key &&
-        _pubkey) {
-      if (fs.existsSync(`${api.paths.agamaDir}/shepherd/pin/${_pubkey}.pin`)) {
-        fs.readFile(`${api.paths.agamaDir}/shepherd/pin/${_pubkey}.pin`, 'utf8', async(err, data) => {
-          if (err) {
-            const retObj = {
-              msg: 'error',
-              result: err,
-            };
+    if (!_key || !_pubkey) {
+      return res.send(JSON.stringify({ msg: "error", result: "Missing key or pubkey param" }));
+    }
 
-            res.send(JSON.stringify(retObj));
-          } else {
-            const decryptedKey = aes256.decrypt(_key, data);
-            const _regexTest = decryptedKey.match(/^[0-9a-zA-Z ]+$/g);
+    let pinFile;
+    try {
+      pinFile = resolvePinFile(pinDirectory(), _pubkey);
+      assertAttemptAllowed(api.pinDecryptAttempts, _pubkey);
+    } catch (e) {
+      return res.send(JSON.stringify({ msg: "error", result: e.message }));
+    }
 
-            if (_regexTest) { // re-encrypt with a new method
-              encrypt(decryptedKey, _key)
-              .then((encryptedString) => {
-                api.log(`seed encrypt old method detected for file ${_pubkey}`, 'pin');
+    if (!(await fs.pathExists(pinFile))) {
+      recordFailedAttempt(api.pinDecryptAttempts, _pubkey);
+      return res.send(JSON.stringify({ msg: "error", result: "Pin file not found" }));
+    }
 
-                fs.writeFile(`${api.paths.agamaDir}/shepherd/pin/${_pubkey}.pin`, encryptedString, (err) => {
-                  if (err) {
-                    api.log(`Error re-encrypt pin file ${_pubkey}`, 'pin');
-
-                    const retObj = {
-                      msg: 'error',
-                      result: `Error re-encrypt pin file ${_pubkey}`
-                    };
-
-                    res.send(JSON.stringify(retObj));
-                  } else {
-                    const retObj = {
-                      msg: 'success',
-                      result: decryptedKey,
-                    };
-
-                    res.send(JSON.stringify(retObj));
-                  }
-                });
-              });
-            } else {
-              decrypt(data, _key)
-              .then((decryptedKey) => {
-                api.log(`pin ${_pubkey} decrypted`, 'pin');
-
-                const retObj = {
-                  msg: 'success',
-                  result: decryptedKey,
-                };
-
-                res.send(JSON.stringify(retObj));
-              })
-              .catch((err) => {
-                api.log(`pin ${_pubkey} decrypt err ${err}`, 'pin');
-
-                const retObj = {
-                  msg: 'error',
-                  result: 'Incorrect password.',
-                };
-
-                res.send(JSON.stringify(retObj));
-              });
-            }
-          }
-        });
-      } else {
-        const retObj = {
-          msg: 'error',
-          result: `File ${_pubkey}.pin doesnt exist`,
-        };
-
-        res.send(JSON.stringify(retObj));
+    try {
+      let data = await readPinFile(pinFile);
+      let decryptedKey;
+      try {
+        decryptedKey = await decryptPinPayload(data, _key);
+      } catch (primaryError) {
+        const backupFile = `${pinFile}.bak`;
+        if (!(await fs.pathExists(backupFile)) || (await fs.lstat(backupFile)).isSymbolicLink()) {
+          throw primaryError;
+        }
+        data = await readPinFile(backupFile);
+        decryptedKey = await decryptPinPayload(data, _key);
+        api.log(`pin ${_pubkey} recovered from its last-good backup`, "pin");
       }
-    } else {
-      const retObj = {
-        msg: 'error',
-        result: 'Missing key or pubkey param',
-      };
 
-      res.send(JSON.stringify(retObj));
+      if (!isIocanePayload(data)) {
+        // Legacy AES-CBC has no authentication tag. Validate the plaintext
+        // against its historically derived filename when possible. The old
+        // alphanumeric fallback remains for custom filenames supported by
+        // previous releases.
+        const { dBigi } = deriveScalarFromSeed(decryptedKey, { iguana: true });
+        const derivedAddress = new bitcoin.ECPair(
+          dBigi,
+          null,
+          { network: api.getNetworkData('btc') }
+        ).getAddress();
+        let isHistoricalDerivedFilename = false;
+        try {
+          isHistoricalDerivedFilename =
+            bitcoin.address.fromBase58Check(_pubkey).version === api.getNetworkData('btc').pubKeyHash;
+        } catch (error) {}
+        if (derivedAddress !== _pubkey &&
+            (isHistoricalDerivedFilename || !/^[0-9a-zA-Z ]+$/.test(decryptedKey))) {
+          throw new Error("Legacy encrypted seed could not be authenticated");
+        }
+        api.log(`legacy encrypted seed read without modifying file ${_pubkey}`, "pin");
+      }
+
+      api.pinDecryptAttempts.delete(_pubkey);
+      api.log(`pin ${_pubkey} decrypted`, "pin");
+      return res.send(JSON.stringify({ msg: "success", result: decryptedKey }));
+    } catch (e) {
+      recordFailedAttempt(api.pinDecryptAttempts, _pubkey);
+      api.log(`pin ${_pubkey} decrypt err ${e.message}`, "pin");
+      return res.send(JSON.stringify({ msg: "error", result: "Incorrect password." }));
     }
   }, true);
 
