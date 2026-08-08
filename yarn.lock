@@ -8023,7 +8023,7 @@ verror@^1.10.0:
 
 "verus-wallet-endpoints@git+https://github.com/VerusCoin/verus-wallet-endpoints.git":
   version "1.0.0"
-  resolved "git+https://github.com/VerusCoin/verus-wallet-endpoints.git#d7c9d51138e5231ac66cbfe316fb5d7527d35e4c"
+  resolved "git+https://github.com/VerusCoin/verus-wallet-endpoints.git#bb461a671c06aa1dcacca813eefb768b0ee7e91e"
 
 "verus_bridgekeeper@git+https://github.com/VerusCoin/verusbridgekeeper.git#a0b0552231f0337c0b6fdf10df19e5d72de91768":
   version "1.0.6"
