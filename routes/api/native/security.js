@@ -59,16 +59,41 @@ const READ_ONLY_RPC_METHODS = new Set([
   "z_validateaddress",
   "z_viewtransaction",
 ]);
-const SIMPLE_STARTUP_OPTIONS = new Set([
-  "-bootstrap",
-  "-fastload",
-  "-gen",
-  "-mint",
-  "-nspv",
-  "-reindex",
-  "-rescan",
-  "-zapwallettxes",
+// Desktop starts daemons with execFile and an argv array, so ordinary option
+// values are not interpreted by a shell. These are the command hooks currently
+// passed to runCommand/system() by every bundled native daemon.
+const COMMAND_STARTUP_OPTION_NAMES = new Set([
+  "alertnotify",
+  "blocknotify",
+  "walletnotify",
 ]);
+// These can load the command hooks above from a different configuration file.
+const CONFIG_SELECTOR_STARTUP_OPTION_NAMES = new Set([
+  "conf",
+  "datadir",
+  "notarydatadir",
+]);
+// Desktop must own these values so RPC security, port detection, and the
+// selected chain still describe the process it launches. Matching chain/ac_name
+// values are allowed.
+const DESKTOP_MANAGED_STARTUP_OPTION_NAMES = new Set([
+  "ac_name",
+  "chain",
+  "rpcallowip",
+  "rpcauth",
+  "rpcbind",
+  "rpcpassword",
+  "rpcport",
+  "rpcuser",
+]);
+const DENIED_STARTUP_OPTION_NAMES = new Set([
+  ...COMMAND_STARTUP_OPTION_NAMES,
+  ...CONFIG_SELECTOR_STARTUP_OPTION_NAMES,
+  ...DESKTOP_MANAGED_STARTUP_OPTION_NAMES,
+]);
+const MATCHING_CHAIN_OPTION_NAMES = new Set(["ac_name", "chain"]);
+const MAX_STARTUP_OPTIONS = 256;
+const MAX_STARTUP_OPTIONS_BYTES = 12 * 1024;
 
 const isValidChainTicker = (value) =>
   typeof value === "string" && CHAIN_TICKER.test(value);
@@ -81,30 +106,112 @@ const isSafeRelativeDirectory = (value) => {
   return segments.every((segment) => segment && segment !== "." && segment !== "..");
 };
 
-const isAllowedStartupOption = (option) => {
-  if (typeof option !== "string" || option.length > 512) return false;
-  if (SIMPLE_STARTUP_OPTIONS.has(option)) return true;
-  if (/^-zapwallettxes=[12]$/.test(option)) return true;
-  if (/^-genproclimit=(-1|[0-9]{1,4})$/.test(option)) return true;
-  if (/^-maxconnections=[0-9]{1,5}$/.test(option)) return Number(option.split("=")[1]) <= 10000;
-  if (/^-pubkey=[0-9a-fA-F]{66}$/.test(option)) return true;
-  if (/^-chain=[0-9a-zA-Z._-]{1,64}$/.test(option)) return true;
+const parseStartupOption = (option) => {
+  if (
+    typeof option !== "string" ||
+    option.length === 0 ||
+    /[\u0000-\u001f\u007f-\u009f]/.test(option)
+  ) {
+    return null;
+  }
+
+  const separatorIndex = option.indexOf("=");
+  let normalizedName =
+    separatorIndex === -1 ? option : option.slice(0, separatorIndex);
+
+  // Mirror ParseParameters: Windows first changes /foo to -foo, then all
+  // platforms change --foo to -foo. Applying both transformations also covers
+  // the Windows-only /-foo alias.
+  if (normalizedName.startsWith("/") && process.platform !== "win32") {
+    return null;
+  }
+  if (normalizedName.startsWith("/")) {
+    normalizedName = `-${normalizedName.slice(1)}`;
+  }
+  if (!normalizedName.startsWith("-")) return null;
+  if (normalizedName.length > 1 && normalizedName[1] === "-") {
+    normalizedName = normalizedName.slice(1);
+  }
+
+  const name = normalizedName.slice(1);
+  if (name.length === 0 || /\s/.test(name)) return null;
+
+  return {
+    name: name.toLowerCase(),
+    value: separatorIndex === -1 ? undefined : option.slice(separatorIndex + 1),
+  };
+};
+
+const startupOptionNameMatches = (name, expectedName) => {
+  let candidate = name;
+
+  // Bitcoin-style negative settings turn -nofoo into -foo=0/1. Repeated
+  // prefixes can cascade while the daemon iterates its ordered option map.
+  while (candidate) {
+    if (candidate === expectedName) return true;
+    if (!candidate.startsWith("no") || candidate.length <= 2) return false;
+    candidate = candidate.slice(2);
+  }
 
   return false;
 };
 
-const validateStartupOptions = (options) => {
+const isDeniedStartupOptionName = (name) =>
+  Array.from(DENIED_STARTUP_OPTION_NAMES).some((deniedName) =>
+    startupOptionNameMatches(name, deniedName)
+  );
+
+const isAllowedStartupOption = (option, allowedChainTicker = null) => {
+  const parsed = parseStartupOption(option);
+  if (parsed == null) return false;
+
+  if (
+    MATCHING_CHAIN_OPTION_NAMES.has(parsed.name) &&
+    typeof allowedChainTicker === "string" &&
+    typeof parsed.value === "string" &&
+    parsed.value.toLowerCase() === allowedChainTicker.toLowerCase()
+  ) {
+    return true;
+  }
+
+  return !isDeniedStartupOptionName(parsed.name);
+};
+
+const validateStartupOptions = (options, allowedChainTicker = null) => {
   if (options == null) return [];
   if (!Array.isArray(options)) throw new Error("Daemon startup options must be an array");
-  if (options.length > 32) throw new Error("Too many daemon startup options");
+  if (options.length > MAX_STARTUP_OPTIONS) {
+    throw new Error("Too many daemon startup options");
+  }
+
+  let totalBytes = 0;
 
   for (const option of options) {
-    if (!isAllowedStartupOption(option)) {
+    if (!isAllowedStartupOption(option, allowedChainTicker)) {
       throw new Error(`Daemon startup option is not allowed: ${String(option)}`);
+    }
+    totalBytes += Buffer.byteLength(option, "utf8");
+    if (totalBytes > MAX_STARTUP_OPTIONS_BYTES) {
+      throw new Error("Daemon startup options are too large");
     }
   }
 
   return options.slice();
+};
+
+const hasStartupOption = (options, optionName) => {
+  const normalizedName = String(optionName).replace(/^-+/, "").toLowerCase();
+
+  return (
+    Array.isArray(options) &&
+    options.some((option) => {
+      const parsed = parseStartupOption(option);
+      return (
+        parsed != null &&
+        startupOptionNameMatches(parsed.name, normalizedName)
+      );
+    })
+  );
 };
 
 const validateLaunchConfig = (chainTicker, launchConfig) => {
@@ -142,7 +249,6 @@ const validateLaunchConfig = (chainTicker, launchConfig) => {
     throw new Error("Invalid daemon tags");
   }
 
-  validateStartupOptions(launchConfig.startupOptions);
   return true;
 };
 
@@ -167,6 +273,7 @@ const isSafeWalletImportPath = (filename) =>
   (path.posix.isAbsolute(filename) || path.win32.isAbsolute(filename));
 
 module.exports = {
+  hasStartupOption,
   isAllowedStartupOption,
   isAllowedRpcMethod,
   isSafeWalletImportPath,

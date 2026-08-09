@@ -6,11 +6,29 @@ const {
 } = require("./security");
 
 module.exports = (api) => {
-  api.native.validateLaunchConfig = (chainTicker, launchConfig, startupOptions) => {
-    validateLaunchConfig(chainTicker, launchConfig);
-    validateStartupOptions(startupOptions);
-    const ticker = chainTicker.toUpperCase();
+  const getChainValidationContext = (chainTicker) => {
+    const ticker =
+      typeof chainTicker === "string" ? chainTicker.toUpperCase() : "";
     const knownChain = ticker === "KMD" || api.chainParams[ticker] != null;
+
+    return {
+      knownChain,
+      ticker,
+    };
+  };
+
+  api.native.validateLaunchConfig = (
+    chainTicker,
+    launchConfig,
+    startupOptions,
+    shouldValidateStartupOptions = true
+  ) => {
+    const { knownChain, ticker } = getChainValidationContext(chainTicker);
+    validateLaunchConfig(chainTicker, launchConfig);
+    if (shouldValidateStartupOptions) {
+      validateStartupOptions(startupOptions, chainTicker);
+      validateStartupOptions(launchConfig.startupOptions, chainTicker);
+    }
 
     if (knownChain) {
       const directoryName = ticker === "KMD" ? null : ticker === "VRSCTEST" ? "vrsctest" : ticker;
@@ -35,8 +53,14 @@ module.exports = (api) => {
       }
     } else {
       const chainOption = `-chain=${chainTicker.toLowerCase()}`;
-      const launchOptions = launchConfig.startupOptions || [];
-      if (launchConfig.daemon !== "verusd" || !launchOptions.includes(chainOption) || !launchConfig.confName) {
+      const launchOptions = Array.isArray(launchConfig.startupOptions)
+        ? launchConfig.startupOptions
+        : [];
+      if (
+        launchConfig.daemon !== "verusd" ||
+        !launchConfig.confName ||
+        (shouldValidateStartupOptions && !launchOptions.includes(chainOption))
+      ) {
         throw new Error("Unsupported dynamic chain launch configuration");
       }
       const expectedDirectories = {
@@ -96,7 +120,7 @@ module.exports = (api) => {
     tags = []
   ) => {
     let acOptions = [];
-    const chainParams = api.chainParams[coin];
+    const chainParams = api.chainParams[coin] || {};
     if (tags.includes("is_komodo"))
       api.customKomodoNetworks[coin.toLowerCase()] = true;
 
@@ -110,11 +134,18 @@ module.exports = (api) => {
       }
     }
 
-    acOptions = acOptions.concat(startupOptions);
+    const getAcOptions = () => {
+      const requestedOptions =
+        typeof startupOptions === "function"
+          ? startupOptions()
+          : startupOptions;
+
+      return acOptions.concat(requestedOptions == null ? [] : requestedOptions);
+    };
 
     return new Promise((resolve, reject) => {
       api
-        .startDaemon(coin, acOptions, daemon, dirNames, confName, fallbackPort)
+        .startDaemon(coin, getAcOptions, daemon, dirNames, confName, fallbackPort)
         .then(() => {
           // Set timeout for "No running daemon message" to be
           // "Initializing daemon" for a few seconds
@@ -141,40 +172,56 @@ module.exports = (api) => {
   };
 
   api.native.addCoin = (chainTicker, launchConfig, startupOptions) => {
-    api.native.validateLaunchConfig(chainTicker, launchConfig, startupOptions);
-    const validatedStartupOptions = validateStartupOptions(startupOptions);
-    const validatedLaunchStartupOptions = validateStartupOptions(launchConfig.startupOptions);
-    api.native.remindBackup()
+    // Startup options are irrelevant when startDaemon attaches to an existing
+    // process. Keep structural and chain-identity validation eager, but defer
+    // option validation until startDaemon has decided it will spawn.
+    api.native.validateLaunchConfig(
+      chainTicker,
+      launchConfig,
+      startupOptions,
+      false
+    );
     let { daemon, fallbackPort, dirNames, confName, tags } = launchConfig;
 
-    let startupParams = [
-      ...validatedStartupOptions,
-      ...validatedLaunchStartupOptions,
-    ];
-
-    // TODO: Remove
-    if (
-      api.appConfig.coin.native.stakeGuard[chainTicker] &&
-      api.appConfig.coin.native.stakeGuard[chainTicker].length > 0
-    ) {
-      startupParams.push(
-        `-cheatcatcher=${api.appConfig.coin.native.stakeGuard[chainTicker]}`
+    const getStartupParams = () => {
+      api.native.validateLaunchConfig(
+        chainTicker,
+        launchConfig,
+        startupOptions
       );
-    }
+      let startupParams = [
+        ...validateStartupOptions(startupOptions, chainTicker),
+        ...validateStartupOptions(launchConfig.startupOptions, chainTicker),
+      ];
 
-    // This removes any duplicates in startupParams, keeping the last index
-    startupParams = startupParams.filter((param, index) => {
-      return (
-        index == startupParams.length - 1 ||
-        !startupParams.slice(index + 1).some((x) => {
-          return x.split("=")[0] === param.split("=")[0];
-        })
-      );
-    });
+      // TODO: Remove
+      if (
+        api.appConfig.coin.native.stakeGuard[chainTicker] &&
+        api.appConfig.coin.native.stakeGuard[chainTicker].length > 0
+      ) {
+        startupParams.push(
+          `-cheatcatcher=${api.appConfig.coin.native.stakeGuard[chainTicker]}`
+        );
+      }
+
+      // This removes any duplicates in startupParams, keeping the last index
+      startupParams = startupParams.filter((param, index) => {
+        return (
+          index == startupParams.length - 1 ||
+          !startupParams.slice(index + 1).some((x) => {
+            return x.split("=")[0] === param.split("=")[0];
+          })
+        );
+      });
+
+      return startupParams;
+    };
+
+    api.native.remindBackup()
 
     const returnResult = api.native.activateNativeCoin(
       chainTicker,
-      startupParams,
+      getStartupParams,
       daemon,
       fallbackPort,
       dirNames,
@@ -191,27 +238,26 @@ module.exports = (api) => {
   /**
    * Function to activate coin daemon in native mode
    */
-  api.setPost("/native/coins/activate", (req, res) => {
+  api.setPost("/native/coins/activate", async (req, res) => {
     const { chainTicker, launchConfig, startupOptions } = req.body;
 
-    api.native
-      .addCoin(chainTicker, launchConfig, startupOptions)
-      .then((result) => {
-        const retObj = {
-          msg: "success",
-          result,
-        };
+    try {
+      const result = await api.native.addCoin(
+        chainTicker,
+        launchConfig,
+        startupOptions
+      );
 
-        res.send(JSON.stringify(retObj));
-      })
-      .catch((e) => {
-        const retObj = {
-          msg: "error",
-          result: e.message,
-        };
-
-        res.send(JSON.stringify(retObj));
-      });
+      return res.send(JSON.stringify({
+        msg: "success",
+        result,
+      }));
+    } catch (e) {
+      return res.send(JSON.stringify({
+        msg: "error",
+        result: e.message,
+      }));
+    }
   }, true);
 
   return api;
