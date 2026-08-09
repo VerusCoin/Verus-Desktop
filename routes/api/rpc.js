@@ -52,10 +52,16 @@ module.exports = (api) => {
     }
   }
 
-  api.sendToCli = (payload) => {
+  api.sendToCli = (payload, options = {}) => {
     return new Promise(async (resolve, reject) => {
+      const resolveResponse = (body, confirmedDaemonResponse = false) => resolve(
+        options != null && options.includeResponseMetadata === true
+          ? Object.freeze({ body, confirmedDaemonResponse })
+          : body
+      );
+
       if (!payload) {  
-        resolve(JSON.stringify({
+        resolveResponse(JSON.stringify({
           result: "error",
           code: -1,
           message: 'No payload provided to send to cli'
@@ -63,16 +69,41 @@ module.exports = (api) => {
       } else {
         const _chain = payload.chain;
         let _cmd = payload.cmd;
+        const hasPinnedTarget =
+          options != null &&
+          Object.prototype.hasOwnProperty.call(options, "rpcTarget");
+        let rpcTarget;
   
-        if (!api.rpcConf[_chain]) {
-          api.getConf(_chain);
-        } else if (!api.rpcConf[_chain].pendingUpdate) {
-          api.log(`setting ${_chain} rpc config to update in ${RPC_CONF_UPDATE_TIMEOUT/1000} seconds`, 'native.confd');
-          api.rpcConf[_chain].pendingUpdate = true
-  
-          const confUpdateId = setTimeout(() => api.getConf(_chain), RPC_CONF_UPDATE_TIMEOUT)
-  
-          api.rpcConf[_chain].updateTimeoutId = confUpdateId
+        if (hasPinnedTarget) {
+          const candidate = options.rpcTarget;
+          if (
+            !candidate ||
+            candidate.chain !== _chain ||
+            !Number.isInteger(candidate.port) ||
+            candidate.port < 1 ||
+            candidate.port > 65535 ||
+            typeof candidate.user !== "string" ||
+            typeof candidate.pass !== "string"
+          ) {
+            resolveResponse(JSON.stringify({
+              result: "error",
+              error: { code: 400, message: "Approved daemon RPC target is invalid." },
+            }));
+            return;
+          }
+          rpcTarget = candidate;
+        } else {
+          if (!api.rpcConf[_chain]) {
+            api.getConf(_chain);
+          } else if (!api.rpcConf[_chain].pendingUpdate) {
+            api.log(`setting ${_chain} rpc config to update in ${RPC_CONF_UPDATE_TIMEOUT/1000} seconds`, 'native.confd');
+            api.rpcConf[_chain].pendingUpdate = true
+
+            const confUpdateId = setTimeout(() => api.getConf(_chain), RPC_CONF_UPDATE_TIMEOUT)
+
+            api.rpcConf[_chain].updateTimeoutId = confUpdateId
+          }
+          rpcTarget = api.rpcConf[_chain];
         }
   
         let _body = {
@@ -89,8 +120,8 @@ module.exports = (api) => {
         }
   
         if (payload.chain) {
-          if (!api.rpcConf[payload.chain]) {  
-            resolve(JSON.stringify({
+          if (!rpcTarget) {
+            resolveResponse(JSON.stringify({
               result: "error",
               error: {
                 code: 404,
@@ -100,17 +131,21 @@ module.exports = (api) => {
           } else {
             try {
               const res = await axios.post(
-                `http://localhost:${api.rpcConf[payload.chain].port}`,
+                `http://127.0.0.1:${rpcTarget.port}`,
                 _body,
                 {
+                  // Daemon RPC payloads can contain wallet passphrases or
+                  // private keys. They must never follow HTTP(S)_PROXY.
+                  proxy: false,
+                  timeout: 600000,
                   auth: {
-                    username: api.rpcConf[payload.chain].user,
-                    password: api.rpcConf[payload.chain].pass,
+                    username: rpcTarget.user,
+                    password: rpcTarget.pass,
                   }
                 }
               );
 
-              resolve(JSON.stringify(res.data))
+              resolveResponse(JSON.stringify(res.data), true)
             } catch(e) {
               if (e.code === 'ECONNREFUSED') {
                 const retObj = {
@@ -123,9 +158,9 @@ module.exports = (api) => {
                   }
                 };
   
-                resolve(JSON.stringify(retObj))
+                resolveResponse(JSON.stringify(retObj))
               } else if (e.response != null) {
-                resolve(JSON.stringify(e.response.data))
+                resolveResponse(JSON.stringify(e.response.data), true)
               } else {
                 const retObj = {
                   result: "error",
@@ -135,7 +170,7 @@ module.exports = (api) => {
                   }
                 };
   
-                resolve(JSON.stringify(retObj))
+                resolveResponse(JSON.stringify(retObj))
               }
             }
           }
