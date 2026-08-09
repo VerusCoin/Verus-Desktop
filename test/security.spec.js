@@ -4,6 +4,7 @@ const fs = require("fs-extra");
 const os = require("os");
 const path = require("path");
 const blake2b = require("blake2b");
+const CryptoJS = require("crypto-js");
 
 const createAuthApi = () => {
   const api = {
@@ -59,7 +60,7 @@ describe("security regressions", function () {
       );
     });
 
-    it("catches asynchronous route failures through the encrypted API wrapper", async function () {
+    it("catches asynchronous route failures and preserves response methods", async function () {
       let wrappedHandler;
       let responseStatus = 200;
       let responseBody;
@@ -104,6 +105,133 @@ describe("security regressions", function () {
       );
       assert.strictEqual(responseStatus, 201);
       assert.strictEqual(responseBody.payload, "wrapped response");
+    });
+
+    it("returns synchronous route failures in the requested encrypted envelope", async function () {
+      let wrappedHandler;
+      let responseBody;
+      const api = {
+        appConfig: { general: { main: { livelog: false } } },
+        BuiltinSecret: "test-secret",
+        get() {},
+        post(route, handler) { wrappedHandler = handler; },
+        rpcCalls: { GET: {}, POST: {} },
+        log() {},
+      };
+      require("../routes/api/auth")(api);
+
+      const route = "/native/coins/activate";
+      const requestPath = "native/coins/activate";
+      const time = Date.now();
+      const appId = "VERUS_DESKTOP_MAIN";
+      const hash = blake2b(64);
+      for (const value of [String(time), api.BuiltinSecret, requestPath, appId]) {
+        hash.update(Buffer.from(value));
+      }
+
+      api.setPost(route, () => {
+        throw new Error("synchronous activation failure");
+      }, true);
+
+      const response = {
+        headersSent: false,
+        type() {},
+        status() { return this; },
+        send(value) {
+          this.headersSent = true;
+          responseBody = JSON.parse(value);
+        },
+      };
+      await wrappedHandler(
+        {
+          body: {
+            app_id: appId,
+            builtin: true,
+            encrypted: true,
+            payload: CryptoJS.AES.encrypt(
+              JSON.stringify({}),
+              api.BuiltinSecret
+            ).toString(),
+            time,
+            validity_key: hash.digest("hex"),
+          },
+        },
+        response,
+        () => {}
+      );
+
+      const plaintext = CryptoJS.AES.decrypt(
+        responseBody.payload,
+        api.BuiltinSecret
+      ).toString(CryptoJS.enc.Utf8);
+      assert.deepStrictEqual(JSON.parse(plaintext), {
+        msg: "error",
+        result: "synchronous activation failure",
+      });
+    });
+
+    it("keeps encrypted framing for encrypted request decoding errors", async function () {
+      let handlerCalled = false;
+      let responseBody;
+      let responseStatus = 200;
+      let wrappedHandler;
+      const api = {
+        appConfig: { general: { main: { livelog: false } } },
+        BuiltinSecret: "test-secret",
+        get() {},
+        post(route, handler) { wrappedHandler = handler; },
+        rpcCalls: { GET: {}, POST: {} },
+        log() {},
+      };
+      require("../routes/api/auth")(api);
+
+      const route = "/native/get_info";
+      const requestPath = "native/get_info";
+      const time = Date.now();
+      const appId = "VERUS_DESKTOP_MAIN";
+      const hash = blake2b(64);
+      for (const value of [String(time), api.BuiltinSecret, requestPath, appId]) {
+        hash.update(Buffer.from(value));
+      }
+      api.setPost(route, () => { handlerCalled = true; }, true);
+
+      const response = {
+        headersSent: false,
+        type() {},
+        status(value) { responseStatus = value; return this; },
+        send(value) {
+          this.headersSent = true;
+          responseBody = JSON.parse(value);
+        },
+      };
+      await wrappedHandler(
+        {
+          body: {
+            app_id: appId,
+            builtin: true,
+            encrypted: true,
+            payload: CryptoJS.AES.encrypt(
+              "not valid JSON",
+              api.BuiltinSecret
+            ).toString(),
+            time,
+            validity_key: hash.digest("hex"),
+          },
+        },
+        response,
+        () => {}
+      );
+
+      const plaintext = CryptoJS.AES.decrypt(
+        responseBody.payload,
+        api.BuiltinSecret
+      ).toString(CryptoJS.enc.Utf8);
+      assert.strictEqual(handlerCalled, false);
+      assert.strictEqual(responseStatus, 400);
+      assert.deepStrictEqual(JSON.parse(plaintext), {
+        msg: "error",
+        result: "Invalid encrypted API payload",
+      });
     });
   });
 
@@ -225,12 +353,14 @@ describe("security regressions", function () {
 
   describe("native API restrictions", function () {
     const {
+      hasStartupOption,
       isAllowedRpcMethod,
       isAllowedStartupOption,
       isSafeWalletImportPath,
       isSafeWalletFilename,
       isValidChainTicker,
       validateLaunchConfig,
+      validateStartupOptions,
     } = require("../routes/api/native/security");
 
     it("allows read-only RPCs and rejects key export or fund movement", function () {
@@ -242,16 +372,388 @@ describe("security regressions", function () {
       assert.strictEqual(isAllowedRpcMethod("sendcurrency"), false);
     });
 
-    it("rejects sensitive daemon flags and unsafe launch paths", function () {
+    it("allows ordinary daemon flags and rejects unsafe capability overrides", function () {
+      const reportedOptions = [
+        "-arbitrageaddress=Oink@",
+        "-notaryid=Oink@",
+        "-fastload=0",
+      ];
+      const validated = validateStartupOptions(reportedOptions);
+
+      assert.deepStrictEqual(validated, reportedOptions);
+      assert.notStrictEqual(validated, reportedOptions);
       assert.strictEqual(isAllowedStartupOption("-mint"), true);
+      assert.strictEqual(isAllowedStartupOption("-txindex=1"), true);
+      assert.strictEqual(isAllowedStartupOption("-addressindex"), true);
+      assert.strictEqual(isAllowedStartupOption("-addnode=127.0.0.1"), true);
+      assert.strictEqual(isAllowedStartupOption("-rpcthreads=8"), true);
+      assert.strictEqual(isAllowedStartupOption("-rpcworkqueue=32"), true);
+      assert.strictEqual(isAllowedStartupOption("--notaryid=Oink@"), true);
+      assert.strictEqual(
+        isAllowedStartupOption("-notaryid=Verus Coin Foundation@"),
+        true
+      );
+
       assert.strictEqual(isAllowedStartupOption("-rpcbind=0.0.0.0"), false);
-      assert.strictEqual(isAllowedStartupOption("-exportdir=/tmp"), false);
+      assert.strictEqual(isAllowedStartupOption("--norpcbind=0"), false);
+      assert.strictEqual(isAllowedStartupOption("-exportdir=/tmp"), true);
+      assert.strictEqual(isAllowedStartupOption("-conf=/tmp/unsafe.conf"), false);
       assert.strictEqual(isAllowedStartupOption("-datadir=/tmp"), false);
+      assert.strictEqual(isAllowedStartupOption("-notarydatadir=/tmp"), false);
+      assert.strictEqual(isAllowedStartupOption("-rpcport=1234"), false);
+      assert.strictEqual(isAllowedStartupOption("-rpcuser=unsafe"), false);
+      assert.strictEqual(isAllowedStartupOption("-rpcpassword=unsafe"), false);
+      assert.strictEqual(isAllowedStartupOption("-debug=net"), true);
+      assert.strictEqual(isAllowedStartupOption("-debug=zrpcunsafe"), true);
+      assert.strictEqual(isAllowedStartupOption("-debug=rpcapi"), true);
+      assert.strictEqual(isAllowedStartupOption("-debug=1"), true);
+      assert.strictEqual(isAllowedStartupOption("-debug"), true);
+      assert.strictEqual(isAllowedStartupOption("-nodebug"), true);
+      assert.strictEqual(isAllowedStartupOption("-nodebug=0"), true);
+      assert.strictEqual(isAllowedStartupOption("-chain=vrsc"), false);
+      assert.strictEqual(isAllowedStartupOption("-chain=vrsc", "VRSC"), true);
+      assert.deepStrictEqual(
+        validateStartupOptions(["-chain=vrsc"], "VRSC"),
+        ["-chain=vrsc"]
+      );
+      assert.throws(
+        () => validateStartupOptions(["-chain=other"], "VRSC"),
+        /not allowed/
+      );
+      assert.strictEqual(isAllowedStartupOption("-ac_name=OTHER"), false);
+      assert.strictEqual(
+        isAllowedStartupOption("-ac_name=VRSC", "VRSC"),
+        true
+      );
+
+      for (const option of [
+        "-alertnotify",
+        "-alertnotify=echo unsafe",
+        "--NOALERTNOTIFY",
+        "-blocknotify=echo unsafe",
+        "--NOBLOCKNOTIFY",
+        "-walletnotify=echo unsafe",
+        "--WALLETNOTIFY=echo unsafe",
+        "/walletnotify=echo unsafe",
+        "/-walletnotify=echo unsafe",
+        "/-noalertnotify=0",
+        "/-noblocknotify=0",
+        "/-nowalletnotify=0",
+        "-noalertnotify=0",
+        "-noblocknotify=0",
+        "-nowalletnotify=0",
+        "-nonowalletnotify=0",
+      ]) {
+        assert.strictEqual(isAllowedStartupOption(option), false, option);
+      }
+      assert.strictEqual(isAllowedStartupOption("-foowalletnotify=1"), true);
+      assert.strictEqual(isAllowedStartupOption("-notify=1"), true);
+      assert.strictEqual(
+        isAllowedStartupOption("/notaryid=Oink@"),
+        process.platform === "win32"
+      );
+      assert.strictEqual(isAllowedStartupOption("txindex=1"), false);
+      assert.strictEqual(isAllowedStartupOption("-txindex=1\n-rpcbind=0.0.0.0"), false);
+      assert.strictEqual(isAllowedStartupOption("-notaryid=Oink@\0-rpcbind=0.0.0.0"), false);
+      assert.throws(
+        () => validateStartupOptions("-notaryid=Oink@"),
+        /must be an array/
+      );
+      assert.throws(() => validateStartupOptions([42]), /not allowed/);
+      assert.deepStrictEqual(
+        validateStartupOptions(Array(64).fill("-mint")),
+        Array(64).fill("-mint")
+      );
+      assert.throws(
+        () => validateStartupOptions(Array(257).fill("-mint")),
+        /Too many/
+      );
+      assert.throws(
+        () => validateStartupOptions([`-uacomment=${"x".repeat(13 * 1024)}`]),
+        /too large/
+      );
+
+      assert.strictEqual(hasStartupOption(reportedOptions, "fastload"), true);
+      assert.strictEqual(hasStartupOption(["--nofastload"], "fastload"), true);
+      assert.strictEqual(
+        hasStartupOption(["-nonofastload=0"], "fastload"),
+        true
+      );
+      assert.strictEqual(hasStartupOption(["-notaryid=Oink@"], "fastload"), false);
 
       assert.throws(() => validateLaunchConfig("VRSC", {
         daemon: "verusd",
         dirNames: { darwin: "../../tmp", linux: ".komodo/VRSC", win32: "Komodo/VRSC" },
       }), /data directory/);
+    });
+
+    it("defers startup-option checks until native coin activation needs them", async function () {
+      const api = {
+        appConfig: {
+          general: { native: { remindNativeBackup: false } },
+          coin: { native: { stakeGuard: {} } },
+        },
+        chainParams: { VRSC: {} },
+        coinsInitializing: {},
+        customKomodoNetworks: {},
+        native: { launchConfigs: {} },
+        loadLocalConfig() {},
+        log() {},
+        saveLocalAppConf() {},
+        setPost() {},
+      };
+      require("../routes/api/native/coins")(api);
+
+      const activations = [];
+      api.native.activateNativeCoin = async (chainTicker, getOptions) => {
+        activations.push({ chainTicker, getOptions });
+      };
+      const startupOptions = [
+        "-arbitrageaddress=Oink@",
+        "-notaryid=Oink@",
+        "-fastload=0",
+      ];
+
+      const vrscLaunchConfig = {
+        daemon: "verusd",
+        dirNames: {
+          darwin: "Komodo/VRSC",
+          linux: ".komodo/VRSC",
+          win32: "Komodo/VRSC",
+        },
+        startupOptions: [],
+        tags: [],
+      };
+
+      // addCoin can attach without resolving options when startDaemon finds an
+      // existing process. If it later needs to spawn, the deferred check fails.
+      await api.native.addCoin(
+        "VRSC",
+        vrscLaunchConfig,
+        ["-walletnotify=echo unsafe"]
+      );
+      assert.strictEqual(typeof activations[0].getOptions, "function");
+      assert.throws(() => activations[0].getOptions(), /not allowed/);
+      assert.throws(
+        () => api.native.addCoin(
+          "VRSC",
+          {
+            ...vrscLaunchConfig,
+            dirNames: {
+              ...vrscLaunchConfig.dirNames,
+              linux: "../../tmp",
+            },
+          },
+          ["-walletnotify=echo unsafe"]
+        ),
+        /data directory/
+      );
+
+      await api.native.addCoin("VRSC", vrscLaunchConfig, startupOptions);
+      assert.strictEqual(activations[1].chainTicker, "VRSC");
+      assert.deepStrictEqual(activations[1].getOptions(), startupOptions);
+
+      await api.native.addCoin(
+        "VRSC",
+        {
+          ...vrscLaunchConfig,
+          startupOptions: ["-chain=vrsc"],
+        },
+        []
+      );
+      assert.deepStrictEqual(activations[2].getOptions(), ["-chain=vrsc"]);
+
+      await api.native.addCoin("MINE", {
+        confName: "abc123",
+        daemon: "verusd",
+        dirNames: {
+          darwin: "Verus/pbaas/abc123",
+          linux: ".verus/pbaas/abc123",
+          win32: "Verus/pbaas/abc123",
+        },
+        startupOptions: ["-chain=mine"],
+        tags: [],
+      }, ["-chain=mine", "-txindex=1"]);
+      assert.strictEqual(activations[3].chainTicker, "MINE");
+      assert.deepStrictEqual(activations[3].getOptions(), [
+        "-txindex=1",
+        "-chain=mine",
+      ]);
+
+      await api.native.addCoin("RUNNING", {
+        confName: "running123",
+        daemon: "verusd",
+        dirNames: {
+          darwin: "Verus/pbaas/running123",
+          linux: ".verus/pbaas/running123",
+          win32: "Verus/pbaas/running123",
+        },
+        startupOptions: [],
+        tags: [],
+      }, ["-fastload=0"]);
+      assert.strictEqual(activations[4].chainTicker, "RUNNING");
+      assert.throws(
+        () => activations[4].getOptions(),
+        /Unsupported dynamic chain/
+      );
+    });
+
+    it("rejects dangerous restart options before stopping a daemon", async function () {
+      const api = {
+        appConfig: {
+          general: { native: { remindNativeBackup: false } },
+          coin: { native: { stakeGuard: {} } },
+        },
+        chainParams: { VRSC: {} },
+        coinsInitializing: {},
+        customKomodoNetworks: {},
+        native: { launchConfigs: {} },
+        loadLocalConfig() {},
+        log() {},
+        saveLocalAppConf() {},
+        setPost() {},
+      };
+      require("../routes/api/native/coins")(api);
+      require("../routes/api/native/restart")(api);
+
+      let quitCalls = 0;
+      api.quitDaemon = async () => {
+        quitCalls += 1;
+      };
+
+      await assert.rejects(
+        api.native.restartCoin(
+          "VRSC",
+          {
+            daemon: "verusd",
+            dirNames: {
+              darwin: "Komodo/VRSC",
+              linux: ".komodo/VRSC",
+              win32: "Komodo/VRSC",
+            },
+            startupOptions: [],
+            tags: [],
+          },
+          ["-blocknotify=echo unsafe"]
+        ),
+        /not allowed/
+      );
+      assert.strictEqual(quitCalls, 0);
+    });
+
+    it("validates startup options only when starting a daemon", async function () {
+      const runWith = async (
+        requestedOptions,
+        portStatus = "AVAILABLE",
+        customDataDir = ""
+      ) => {
+        const api = {
+          appConfig: {
+            general: { main: { reservedChains: ["VRSC"] } },
+            coin: {
+              native: {
+                dataDir: { VRSC: customDataDir },
+                noFastLoad: { VRSC: false },
+              },
+            },
+          },
+          assetChainPorts: { VRSC: 27486 },
+          assetChainPortsDefault: {},
+          confFileIndex: {},
+          log() {},
+          logFileIndex: {},
+          native: { startParams: {} },
+          paths: {
+            agamaDir: "/unused",
+            verusdBin: "/unused/verusd",
+            vrscDataDir: "/unused/VRSC",
+          },
+          rpcConf: {},
+          startedDaemonRegistry: {},
+        };
+        require("../routes/api/daemonControl")(api);
+        api.initCoinDir = async () => true;
+        api.initLogfile = async () => {};
+        api.initConfFile = async () => {};
+        api.prepareCoinPort = async () => {};
+        api.checkPort = async () => portStatus;
+        api.setCoinDir = () => {};
+
+        let spawnedOptions;
+        let optionReads = 0;
+        api.spawnDaemonChild = (daemon, coin, options) => {
+          assert.strictEqual(daemon, "verusd");
+          assert.strictEqual(coin, "VRSC");
+          spawnedOptions = options.slice();
+        };
+
+        let error;
+        try {
+          await api.startDaemon(
+            "VRSC",
+            () => {
+              optionReads += 1;
+              return Array.isArray(requestedOptions)
+                ? requestedOptions.slice()
+                : requestedOptions;
+            },
+            "verusd",
+            {
+              darwin: "Komodo/VRSC",
+              linux: ".komodo/VRSC",
+              win32: "Komodo/VRSC",
+            },
+            "VRSC"
+          );
+        } catch (e) {
+          error = e;
+        }
+
+        return { error, optionReads, spawnedOptions };
+      };
+
+      assert.deepStrictEqual((await runWith([])).spawnedOptions, ["-fastload"]);
+      assert.deepStrictEqual(
+        (await runWith(["-fastload=0"])).spawnedOptions,
+        ["-fastload=0"]
+      );
+      assert.deepStrictEqual(
+        (await runWith(["-fastload=1"])).spawnedOptions,
+        ["-fastload=1"]
+      );
+      assert.deepStrictEqual(
+        (await runWith(["--nofastload"])).spawnedOptions,
+        ["--nofastload"]
+      );
+      assert.deepStrictEqual(
+        (await runWith([], "AVAILABLE", "/managed/VRSC")).spawnedOptions,
+        ["-datadir=/managed/VRSC", "-fastload"]
+      );
+
+      const attached = await runWith(
+        ["-walletnotify=echo unsafe"],
+        "UNAVAILABLE"
+      );
+      assert.strictEqual(attached.error, undefined);
+      assert.strictEqual(attached.optionReads, 0);
+      assert.strictEqual(attached.spawnedOptions, undefined);
+
+      const attachedWithMalformedOptions = await runWith(
+        "not an array",
+        "UNAVAILABLE"
+      );
+      assert.strictEqual(attachedWithMalformedOptions.error, undefined);
+      assert.strictEqual(attachedWithMalformedOptions.optionReads, 0);
+
+      const blockedSpawn = await runWith(["-walletnotify=echo unsafe"]);
+      assert.match(blockedSpawn.error.message, /not allowed/);
+      assert.strictEqual(blockedSpawn.optionReads, 1);
+      assert.strictEqual(blockedSpawn.spawnedOptions, undefined);
+
+      const malformedSpawn = await runWith("not an array");
+      assert.match(malformedSpawn.error.message, /must be an array/);
+      assert.strictEqual(malformedSpawn.optionReads, 1);
+      assert.strictEqual(malformedSpawn.spawnedOptions, undefined);
     });
 
     it("requires wallet import/export filenames to be basenames", function () {
