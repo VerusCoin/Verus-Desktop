@@ -31,6 +31,10 @@ if (!hasLock) {
   } = require("./routes/security/http");
   const { formatBytes } = require("agama-wallet-lib/src/utils");
   const { dialog } = require("electron");
+  const { createHash } = require("crypto");
+  const {
+    createTerminalRpcApprovalService,
+  } = require("./routes/api/native/terminalRpcApproval");
   require("@electron/remote/main").initialize();
 
   global.USB_HOME_DIR = path.resolve(__dirname, "./usb_home");
@@ -169,6 +173,64 @@ if (!hasLock) {
   let appCloseWindow;
   let closeAppAfterLoading = false;
   let forceQuitApp = false;
+
+  const captureTerminalRpcTarget = (request) => {
+    if (!api.rpcConf[request.chainTicker] && typeof api.getConf === "function") {
+      api.getConf(request.chainTicker);
+    }
+    const rpcConfig = api.rpcConf[request.chainTicker];
+    if (
+      !rpcConfig ||
+      !Number.isInteger(rpcConfig.port) ||
+      rpcConfig.port < 1 ||
+      rpcConfig.port > 65535 ||
+      typeof rpcConfig.user !== "string" ||
+      typeof rpcConfig.pass !== "string"
+    ) {
+      throw new Error("Daemon RPC target is unavailable");
+    }
+    const fingerprint = createHash("sha256");
+    for (const value of [
+      request.chainTicker,
+      api.confFileIndex[request.chainTicker],
+      rpcConfig && rpcConfig.port,
+      rpcConfig && rpcConfig.user,
+      rpcConfig && rpcConfig.pass,
+    ]) {
+      fingerprint.update(value == null ? "[absent]" : String(value));
+      fingerprint.update("\0");
+    }
+    return Object.freeze({
+      fingerprint: fingerprint.digest("hex"),
+      rpcTarget: Object.freeze({
+        chain: request.chainTicker,
+        port: rpcConfig.port,
+        user: rpcConfig.user,
+        pass: rpcConfig.pass,
+      }),
+    });
+  };
+
+  api.terminalRpcApproval = createTerminalRpcApprovalService({
+    dialog,
+    getParentWindow: () => mainWindow,
+    executeRpc: (request, executionTarget) => api.native.callDaemon(
+      request.chainTicker,
+      request.method,
+      request.params,
+      { redactLogs: true, rpcTarget: executionTarget.rpcTarget }
+    ),
+    captureExecutionTarget: captureTerminalRpcTarget,
+    executionTargetMatches: (request, capturedTarget) =>
+      captureTerminalRpcTarget(request).fingerprint === capturedTarget.fingerprint,
+    audit: ({ operationId, chain, method, outcome, bytes }) => {
+      const byteDetail = Number.isSafeInteger(bytes) ? `, bytes: ${bytes}` : "";
+      api.log(
+        `operation: ${operationId}, chain: ${chain}, method: ${method}, outcome: ${outcome}${byteDetail}`,
+        "native.terminal.rpc"
+      );
+    },
+  });
 
   module.exports = guiapp;
   let agamaIcon;
