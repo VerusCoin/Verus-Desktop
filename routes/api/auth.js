@@ -72,12 +72,27 @@ module.exports = (api) => {
         api.writeLog(`POST, url: ${url}, forceEncryption: ${forceEncryption}`, 'api.http.request')
       }
 
-      const encrypted = req.body.encrypted || forceEncryption
+      const requestEncrypted =
+        req.body.encrypted === true || req.body.encrypted === "true";
+      const builtin = req.body.builtin === 'true' || req.body.builtin === true;
+      const shieldKey = builtin ? api.BuiltinSecret : null;
+      const sendWrapped = (data) => {
+        const encryptResponse =
+          requestEncrypted &&
+          typeof shieldKey === "string" &&
+          shieldKey.length > 0;
+
+        return res.send(
+          JSON.stringify(
+            encryptResponse
+              ? { payload: encrypt(data, shieldKey) }
+              : { payload: data }
+          )
+        );
+      };
 
       try {
         let payload = null
-        const builtin = req.body.builtin === 'true' || req.body.builtin === true
-        const shieldKey = builtin ? api.BuiltinSecret : null
         
         try {
           if (
@@ -93,22 +108,24 @@ module.exports = (api) => {
           res.status(401);
           throw e
         }
-        
-        if (!encrypted) {
-          payload = req.body.payload;
-        } else {
-          payload = JSON.parse(decrypt(req.body.payload, shieldKey))
+
+        if (forceEncryption && !requestEncrypted) {
+          res.status(400);
+          throw new Error("Encrypted API payload required");
         }
         
-        const wrappedSend = async (data) => {
-          res.send(
-            JSON.stringify(
-              encrypted
-                ? { payload: encrypt(data, shieldKey) }
-                : { payload: data }
-            )
-          );
-        };
+        if (!requestEncrypted) {
+          payload = req.body.payload;
+        } else {
+          try {
+            payload = JSON.parse(decrypt(req.body.payload, shieldKey));
+          } catch (e) {
+            res.status(400);
+            throw new Error("Invalid encrypted API payload");
+          }
+        }
+        
+        const wrappedSend = async (data) => sendWrapped(data);
         let handlerResponse;
         handlerResponse = new Proxy(res, {
           get(target, property) {
@@ -137,14 +154,11 @@ module.exports = (api) => {
         api.log('HTTP POST error', 'setPost')
         api.log(e, 'setPost')
 
-        res.send(
-          JSON.stringify({
-            payload: JSON.stringify({
-              msg: "error",
-              result: e.message,
-            }),
-          })
-        );
+        if (res.headersSent) return;
+        return sendWrapped(JSON.stringify({
+          msg: "error",
+          result: e.message,
+        }));
       }
     })
   }

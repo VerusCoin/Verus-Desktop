@@ -3,6 +3,10 @@ const portscanner = require('portscanner');
 const execFile = require('child_process').execFile;
 const { generateRpcPassword } = require('./utils/auth/rpcAuth.js');
 const { canFetchBootstrap } = require('../children/fetch-bootstrap/window.js');
+const {
+  hasStartupOption,
+  validateStartupOptions,
+} = require('./native/security.js');
 
 module.exports = (api) => {
   api.isPbaasDaemon = (daemon, coin) => {
@@ -448,7 +452,8 @@ module.exports = (api) => {
    * Start a coin daemon provided that start params, the daemon name,
    * and optionally, the custom name of the coin data directory
    * @param {String} coin The chain ticker for the daemon to start
-   * @param {String[]} acOptions Options to start the coin daemon with
+   * @param {String[]|Function} requestedAcOptions Options to start the coin
+   * daemon with, or a function that resolves them only when a spawn is needed
    * @param {String} daemon The name of the coin daemon binary
    * @param {Object} dirNames An object containing the names of the coin data
    * directory, from the home directory of the system, on each different OS { darwin, linux, win32 }
@@ -456,7 +461,7 @@ module.exports = (api) => {
    */
   api.startDaemon = (
     coin,
-    acOptions,
+    requestedAcOptions,
     daemon = "verusd",
     dirNames,
     confName,
@@ -464,6 +469,8 @@ module.exports = (api) => {
   ) => {
     const coinLc = coin.toLowerCase();
     let port = null;
+    let coinDirExisted = false;
+    let customDataDirOption = null;
 
     api.log(
       `${coin} daemon activation requested with ${daemon} binary...`,
@@ -503,7 +510,7 @@ module.exports = (api) => {
           true
         );
 
-        acOptions.push(`-datadir=${api.appConfig.coin.native.dataDir[coin]}`);
+        customDataDirOption = `-datadir=${api.appConfig.coin.native.dataDir[coin]}`;
       } else {
         // if (global.USB_MODE) {
         //   acOptions.push(`-datadir=${api.paths[`${coin.toLowerCase()}DataDir`]}`)
@@ -539,23 +546,8 @@ module.exports = (api) => {
 
       api
         .initCoinDir(coinLc)
-        .then(async (existed) => {
-          if (!existed && !acOptions.includes("-bootstrap") && (await canFetchBootstrap(coin))) {
-            acOptions.push("-bootstrap");
-          }
-
-          if (daemon === "verusd" && 
-              !api.appConfig.coin.native.noFastLoad[coin] && 
-              !acOptions.includes("-fastload")
-            ) {
-            acOptions.push("-fastload");
-          }
-
-          api.log(
-            `selected data: ${JSON.stringify(acOptions, null, "\t")}`,
-            "native.confd"
-          );
-
+        .then((existed) => {
+          coinDirExisted = existed;
           return Promise.all([
             api.initLogfile(coin),
             api.initConfFile(
@@ -573,8 +565,36 @@ module.exports = (api) => {
           port = api.assetChainPorts[coin];
           return api.checkPort(port);
         })
-        .then((status) => {
+        .then(async (status) => {
           if (status === "AVAILABLE") {
+            const suppliedAcOptions =
+              typeof requestedAcOptions === "function"
+                ? requestedAcOptions()
+                : requestedAcOptions;
+            const acOptions = validateStartupOptions(suppliedAcOptions, coin);
+
+            if (customDataDirOption != null) {
+              acOptions.push(customDataDirOption);
+            }
+            if (
+              !coinDirExisted &&
+              !hasStartupOption(acOptions, "bootstrap") &&
+              (await canFetchBootstrap(coin))
+            ) {
+              acOptions.push("-bootstrap");
+            }
+            if (
+              daemon === "verusd" &&
+              !api.appConfig.coin.native.noFastLoad[coin] &&
+              !hasStartupOption(acOptions, "fastload")
+            ) {
+              acOptions.push("-fastload");
+            }
+
+            api.log(
+              `selected data: ${JSON.stringify(acOptions, null, "\t")}`,
+              "native.confd"
+            );
             api.log(
               `port ${port} available, starting daemon...`,
               "native.process"
