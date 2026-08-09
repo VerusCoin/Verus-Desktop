@@ -166,7 +166,7 @@ module.exports = (api) => {
   //     return new Promise((resolve, reject) => {
   //       const result = 'Conf file permissions updated to Read/Write';
 
-  //       fsnode.chmodSync(DaemonConfPath, '0666');
+  //       fsnode.chmodSync(DaemonConfPath, '0600');
   //       api.log(result, 'native.confd');
   //       api.writeLog(`setconf ${result}`);
 
@@ -190,7 +190,7 @@ module.exports = (api) => {
   //           if (err)
   //             return api.log(err);
 
-  //           fsnode.chmodSync(DaemonConfPath, '0666');
+  //           fsnode.chmodSync(DaemonConfPath, '0600');
   //           api.writeLog(`setconf ${result}`, 'native.confd');
   //           api.log(result);
   //           resolve(result);

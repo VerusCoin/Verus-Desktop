@@ -1,18 +1,37 @@
 const fs = require('fs-extra');
-const _fs = require('graceful-fs');
-const fsnode = require('fs');
+const { atomicWriteFileSync } = require("./utils/atomicFile");
+
+const validateUsers = (users) => {
+  if (!users || typeof users !== "object" || Array.isArray(users)) {
+    throw new Error("Users data must be an object");
+  }
+  return users;
+};
+const validateUsersBuffer = (buffer) => validateUsers(JSON.parse(buffer.toString("utf8")));
 
 module.exports = (api) => {
   api.loadLocalUsers = () => {
     if (fs.existsSync(`${api.paths.agamaDir}/users.json`)) {
-      let localUsersJson = fs.readFileSync(`${api.paths.agamaDir}/users.json`, 'utf8');
+      const usersFile = `${api.paths.agamaDir}/users.json`;
+      fs.chmodSync(usersFile, 0o600);
+      let localUsersJson = fs.readFileSync(usersFile, 'utf8');
       let localUsers
       
       try {
-        localUsers = JSON.parse(localUsersJson);
+        localUsers = validateUsers(JSON.parse(localUsersJson));
       } catch (e) {
         api.log('unable to parse local users.json', 'users');
-        localUsers = {};
+        const backupFile = `${usersFile}.bak`;
+        if (fs.existsSync(backupFile)) {
+          try {
+            localUsers = validateUsers(JSON.parse(fs.readFileSync(backupFile, 'utf8')));
+            api.log('Using validated users.json.bak without modifying either file.', 'users');
+            return localUsers;
+          } catch (backupError) {
+            api.log(`unable to parse users.json.bak: ${backupError.message}`, 'users');
+          }
+        }
+        throw new Error(`Existing users.json is invalid and was left unchanged: ${e.message}`);
       }
 
       api.log('users set from local file', 'users');
@@ -30,25 +49,19 @@ module.exports = (api) => {
     const usersFileName = `${api.paths.agamaDir}/users.json`;
 
     try {
-      try {
-        _fs.accessSync(api.paths.agamaDir, fs.constants.R_OK)
-      } catch (e) {
-        if (e.code == 'EACCES') {
-          fsnode.chmodSync(usersFileName, '0666');
-        } else if (e.code === 'ENOENT') {
-          api.log('users directory not found', 'users');
-        }
-      }
-     
-      fs.writeFileSync(usersFileName,
-                  JSON.stringify(users), 'utf8');
+      validateUsers(users);
+      atomicWriteFileSync(usersFileName, JSON.stringify(users), {
+        backup: true,
+        mode: 0o600,
+        validate: validateUsersBuffer,
+      });
 
-      
       api.log('users.json write file is done', 'users');
       api.log(`app users.json file is created successfully at: ${api.paths.agamaDir}`, 'users');
     } catch (e) {
       api.log('error writing users', 'users');
       api.log(e, 'users');
+      throw e;
     }
   }
 
@@ -57,25 +70,17 @@ module.exports = (api) => {
     const usersFileName = `${api.paths.agamaDir}/users_backup_${new Date().getTime()}.json`;
 
     try {
-      try {
-        _fs.accessSync(api.paths.agamaDir, fs.constants.R_OK)
-      } catch (e) {
-        if (e.code == 'EACCES') {
-          fsnode.chmodSync(usersFileName, '0666');
-        } else if (e.code === 'ENOENT') {
-          api.log('users directory not found', 'users');
-        }
-      }
-     
-      fs.writeFileSync(usersFileName,
-                  JSON.stringify(users), 'utf8');
-
-      
+      atomicWriteFileSync(usersFileName, JSON.stringify(users), {
+        backup: false,
+        mode: 0o600,
+        validate: validateUsersBuffer,
+      });
       api.log(`${usersFileName} write file is done`, 'users');
       api.log(`app ${usersFileName} file is created successfully at: ${api.paths.agamaDir}`, 'users');
     } catch (e) {
       api.log('error writing users', 'users');
       api.log(e, 'users');
+      throw e;
     }
   }
 

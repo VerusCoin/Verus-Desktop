@@ -1,80 +1,43 @@
 const fs = require('fs-extra');
-const _fs = require('graceful-fs');
-const fsnode = require('fs');
 const defaultConf = require('../appConfig.js').config;
-const {
-  addMerge,
-  flattenObjectProps,
-  removeElementByProperties,
-  useStringAsKey
-} = require("./utils/objectUtil/objectUtil.js");
+const { normalizeConfig } = require("./utils/configValidation");
+const { atomicWriteFileSync } = require("./utils/atomicFile");
+
+const validateConfigBuffer = (buffer) =>
+  normalizeConfig(JSON.parse(buffer.toString("utf8")), defaultConf, { stripUnknown: true });
 
 module.exports = (api) => {
   api.loadLocalConfig = () => {
     const configLocation = `${api.paths.agamaDir}/config.json`
+    const parseConfigFile = (file) => {
+      const savedConfig = JSON.parse(fs.readFileSync(file, 'utf8'));
+      return normalizeConfig(savedConfig, defaultConf, { stripUnknown: true });
+    };
 
     if (fs.existsSync(configLocation)) {
       try {
-        let configChanged = false
-
-        let localAppConfig = JSON.parse(fs.readFileSync(configLocation, 'utf8'))
-
         api.log('Local app config read successfully, checking diffs...', 'settings');
-
-        const flatLocal = flattenObjectProps(localAppConfig)
-        const flatDefault = flattenObjectProps(defaultConf)
-        
-        const localUnecessary = flatLocal.filter(x => {return !flatDefault.includes(x)})
-
-        if (localUnecessary.length > 0) {
-          api.log('The local config has the following unecessary properties, deleting them now...', 'settings');
-          api.log(localUnecessary, 'settings');
-
-          localUnecessary.forEach(propertyGroup => {
-            if (useStringAsKey(localAppConfig, propertyGroup) != null) {
-              const propertyArray = propertyGroup.split('.')
-              localAppConfig = removeElementByProperties(localAppConfig, propertyArray)
-
-              api.log(`Removed ${propertyGroup} successfully...`, 'settings');
-            }
-          })
-
-          configChanged = true
-          api.log(`Done removing unecessary properties from local config.`, 'settings');
-        }
-
-        const localMissing = flatDefault.filter(x => {return !flatLocal.includes(x)})
-
-        if (localMissing.length > 0) {
-          api.log('The local config is missing the following properties! Attempting to add them in now...', 'settings');
-          api.log(localMissing, 'settings');
-
-          localMissing.forEach(propertyGroup => {
-            if (useStringAsKey(localAppConfig, propertyGroup) == null) {
-              localAppConfig = addMerge(localAppConfig, defaultConf)
-
-              api.log(`Added ${propertyGroup} successfully...`, 'settings');
-            }
-          })
-
-          configChanged = true
-          api.log(`Done adding missing necessary properties to local config.`, 'settings');
-        }
+        // Older releases can leave retired settings behind. They are ignored
+        // in memory, but an upgrade never rewrites the user's existing file.
+        const localAppConfig = parseConfigFile(configLocation);
 
         api.log(`Done checking local config diffs.`, 'settings');
-
-        if (configChanged) {
-          api.log(`Diffs found and config updated, saving new config...`, 'settings');
-          api.saveLocalAppConf(localAppConfig);
-        } else {
-          api.log(`No diffs found.`, 'settings');
-        }
-        
         return localAppConfig
 
       } catch(e) {
         api.log('Unable to load local config.json, error with following message:', 'settings');
         api.log(e.message, 'settings');
+        const backupLocation = `${configLocation}.bak`;
+        if (fs.existsSync(backupLocation)) {
+          try {
+            const backupConfig = parseConfigFile(backupLocation);
+            api.log('Using validated config.json.bak without modifying either file.', 'settings');
+            return backupConfig;
+          } catch (backupError) {
+            api.log(`Unable to load config.json.bak: ${backupError.message}`, 'settings');
+          }
+        }
+        throw new Error(`Existing config.json is invalid and was left unchanged: ${e.message}`);
       }
     }
 
@@ -85,19 +48,14 @@ module.exports = (api) => {
 
   api.saveLocalAppConf = (appSettings) => {
     const configFileName = `${api.paths.agamaDir}/config.json`;
+    const validatedSettings = normalizeConfig(appSettings, defaultConf);
 
     try {
-      try {
-        _fs.accessSync(api.paths.agamaDir, fs.constants.R_OK)
-      } catch (e) {
-        if (e.code == 'EACCES') {
-          fsnode.chmodSync(configFileName, '0666');
-        } else if (e.code === 'ENOENT') {
-          api.log('config directory not found', 'settings');
-        }
-      }
-
-      fs.writeFileSync(configFileName, JSON.stringify(appSettings, null, 2), 'utf8');
+      atomicWriteFileSync(configFileName, JSON.stringify(validatedSettings, null, 2), {
+        backup: true,
+        mode: 0o600,
+        validate: validateConfigBuffer,
+      });
 
       api.log('config.json write file is done', 'settings');
       api.log(`app config.json file is created successfully at: ${api.paths.agamaDir}`, 'settings');
@@ -151,7 +109,7 @@ module.exports = (api) => {
         result: 'config saved',
       }));
     }
-  });
+  }, true);
 
   /*
    *  type: POST
@@ -166,7 +124,7 @@ module.exports = (api) => {
     };
 
     res.send(JSON.stringify(retObj));
-  });
+  }, true);
 
   /*
    *  type: GET

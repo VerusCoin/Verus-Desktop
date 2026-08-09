@@ -29,9 +29,9 @@ module.exports = (shepherd) => {
         let kvElectrumServersCache = fs.readFileSync(`${shepherd.agamaDir}/kvElectrumServersCache.json`, 'utf8');
 
         // temp edge cases until kv edit is implemented
-        kvElectrumServersCache.replace('tpc', 'tcp');
-        kvElectrumServersCache.replace('kraken.cryptap.us:50004:tcp', 'kraken.cryptap.us:50004:ssl');
-        kvElectrumServersCache.replace('cetus.cryptap.us:50004:tcp', 'cetus.cryptap.us:50004:ssl');
+        kvElectrumServersCache = kvElectrumServersCache.replace('tpc', 'tcp');
+        kvElectrumServersCache = kvElectrumServersCache.replace('kraken.cryptap.us:50004:tcp', 'kraken.cryptap.us:50004:ssl');
+        kvElectrumServersCache = kvElectrumServersCache.replace('cetus.cryptap.us:50004:tcp', 'cetus.cryptap.us:50004:ssl');
 
         kvElectrumServersCache = JSON.parse(kvElectrumServersCache);
 
@@ -64,7 +64,9 @@ module.exports = (shepherd) => {
 
   shepherd.loadElectrumServersList = () => {
     if (fs.existsSync(`${shepherd.agamaDir}/electrumServers.json`)) {
-      const localElectrumServersList = fs.readFileSync(`${shepherd.agamaDir}/electrumServers.json`, 'utf8');
+      const serverFile = `${shepherd.agamaDir}/electrumServers.json`;
+      fs.chmodSync(serverFile, 0o600);
+      const localElectrumServersList = fs.readFileSync(serverFile, 'utf8');
 
       shepherd.log('electrum servers list set from local file');
 
@@ -94,7 +96,7 @@ module.exports = (shepherd) => {
           return new Promise((resolve, reject) => {
             const result = 'electrumServers.json file permissions updated to Read/Write';
 
-            fsnode.chmodSync(electrumServersListFileName, '0666');
+            fsnode.chmodSync(electrumServersListFileName, '0600');
 
             setTimeout(() => {
               shepherd.log(result);
@@ -112,7 +114,7 @@ module.exports = (shepherd) => {
                 return shepherd.log(err);
             });
 
-            fsnode.chmodSync(electrumServersListFileName, '0666');
+            fsnode.chmodSync(electrumServersListFileName, '0600');
             setTimeout(() => {
               shepherd.log(result);
               shepherd.log(`electrumServers.json file is created successfully at: ${shepherd.agamaDir}`);
@@ -136,7 +138,7 @@ module.exports = (shepherd) => {
           return new Promise((resolve, reject) => {
             const result = 'kvElectrumServersCache.json file permissions updated to Read/Write';
 
-            fsnode.chmodSync(kvElectrumServersListFileName, '0666');
+            fsnode.chmodSync(kvElectrumServersListFileName, '0600');
 
             setTimeout(() => {
               shepherd.log(result);
@@ -154,7 +156,7 @@ module.exports = (shepherd) => {
                 return shepherd.log(err);
             });
 
-            fsnode.chmodSync(kvElectrumServersListFileName, '0666');
+            fsnode.chmodSync(kvElectrumServersListFileName, '0600');
             setTimeout(() => {
               shepherd.log(result);
               shepherd.log(`kvElectrumServersCache.json file is created successfully at: ${shepherd.agamaDir}`);
