@@ -3,6 +3,54 @@ const { describe, it } = require("node:test");
 const http = require("http");
 
 describe("Bridgekeeper network boundary", () => {
+  it("returns only the public ethnode setting through the Desktop API", async () => {
+    const confFile = require("verus_bridgekeeper/confFile");
+    const originalLoadConfFile = confFile.loadConfFile;
+    let getConfRoute;
+    let forceEncryption;
+
+    try {
+      confFile.loadConfFile = () => ({
+        ethnode: "https://ethereum.example.invalid/project-id",
+        privatekey: "bridgekeeper-private-key",
+        rpcuser: "rpc-user",
+        rpcpassword: "rpc-password",
+        ethcontract: "0x1234",
+      });
+
+      const api = {
+        native: {},
+        setPost(route, handler, encrypted) {
+          if (route === "/native/bridgekeeper_getconf") {
+            getConfRoute = handler;
+            forceEncryption = encrypted;
+          }
+        },
+      };
+      require("../routes/api/native/verusbridge/verusbridge")(api);
+
+      assert.deepStrictEqual(await api.native.bridgekeeper_getconf("VRSC"), {
+        ethnode: "https://ethereum.example.invalid/project-id",
+      });
+      assert.strictEqual(forceEncryption, true);
+
+      let response;
+      await getConfRoute(
+        { body: { chainTicker: "VRSC" } },
+        { send(value) { response = JSON.parse(value); } },
+        () => {}
+      );
+      assert.deepStrictEqual(response, {
+        msg: "success",
+        result: { ethnode: "https://ethereum.example.invalid/project-id" },
+      });
+      assert.deepStrictEqual(Object.keys(response.result), ["ethnode"]);
+      assert.doesNotMatch(JSON.stringify(response), /private-key|rpc-user|rpc-password|ethcontract/);
+    } finally {
+      confFile.loadConfFile = originalLoadConfFile;
+    }
+  });
+
   it("binds to loopback and ignores spoofed forwarding headers", async () => {
     const bridgekeeperPath = require.resolve("verus_bridgekeeper");
     const interactorPath = require.resolve("verus_bridgekeeper/ethInteractor.js");

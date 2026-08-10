@@ -1,4 +1,5 @@
 const { ethers } = require("ethers");
+const { executeSensitiveReveal } = require("../sensitiveDataApproval");
 
 module.exports = (api) => { 
   api.eth.get_address = () => {
@@ -43,18 +44,33 @@ module.exports = (api) => {
     })
   });
 
-  api.setPost('/eth/get_privkey', (req, res, next) => {
-    if (api.eth.wallet != null) {
-      res.send(JSON.stringify({
-        msg: 'success',
-        result: api.eth.wallet.signer.signingKey.privateKey,
-      }));  
-    } else {
-      res.send(JSON.stringify({
+  api.setPost('/eth/get_privkey', async (req, res, next) => {
+    if (api.eth.wallet == null) {
+      return res.send(JSON.stringify({
         msg: 'error',
         result: `No ETH privkey found`
-      }));  
+      }));
     }
+
+    const expectedAddress = api.eth.wallet.address;
+    const retObj = await executeSensitiveReveal(
+      api,
+      req,
+      {
+        kind: "private-key",
+        source: "eth",
+        chainTicker: req.body.chainTicker,
+        address: expectedAddress,
+      },
+      async () => {
+        if (api.eth.wallet == null || api.eth.wallet.address !== expectedAddress) {
+          throw new Error("The approved Ethereum wallet changed");
+        }
+        return api.eth.wallet.signer.signingKey.privateKey;
+      }
+    );
+
+    res.send(JSON.stringify(retObj));
   }, true);
 
   return api;

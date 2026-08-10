@@ -6,6 +6,10 @@ const path = require("path");
 const blake2b = require("blake2b");
 const CryptoJS = require("crypto-js");
 
+const approvingSensitiveDataService = () => ({
+  execute: async (request, reveal) => ({ status: "ok", result: await reveal(request) }),
+});
+
 const createAuthApi = () => {
   const api = {
     appConfig: { general: { main: {} } },
@@ -792,6 +796,7 @@ describe("security regressions", function () {
       let decryptHandler;
       const api = {
         paths: { agamaDir: temporaryRoot },
+        sensitiveDataApproval: approvingSensitiveDataService(),
         getNetworkData() { return require("../routes/electrumjs/electrumjs.networks").btc; },
         log() {},
         setPost(route, handler) {
@@ -824,6 +829,7 @@ describe("security regressions", function () {
       let decryptHandler;
       const api = {
         paths: { agamaDir: temporaryRoot },
+        sensitiveDataApproval: approvingSensitiveDataService(),
         getNetworkData() { return require("../routes/electrumjs/electrumjs.networks").btc; },
         log() {},
         setPost(route, handler) {
@@ -876,6 +882,7 @@ describe("security regressions", function () {
       let decryptHandler;
       const api = {
         paths: { agamaDir: temporaryRoot },
+        sensitiveDataApproval: approvingSensitiveDataService(),
         getNetworkData() { return require("../routes/electrumjs/electrumjs.networks").btc; },
         log() {},
         setPost(route, handler) {
@@ -1155,6 +1162,7 @@ describe("security regressions", function () {
         getNetworkData() { return networks.btc; },
         log() {},
         paths: { agamaDir: temporaryRoot },
+        sensitiveDataApproval: approvingSensitiveDataService(),
         setPost(route, handler) {
           if (route === "/decryptkey") decryptHandler = handler;
           if (route === "/encryptkey") encryptHandler = handler;

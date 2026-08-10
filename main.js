@@ -35,6 +35,9 @@ if (!hasLock) {
   const {
     createTerminalRpcApprovalService,
   } = require("./routes/api/native/terminalRpcApproval");
+  const {
+    createSensitiveDataApprovalService,
+  } = require("./routes/api/sensitiveDataApproval");
   require("@electron/remote/main").initialize();
 
   global.USB_HOME_DIR = path.resolve(__dirname, "./usb_home");
@@ -228,6 +231,22 @@ if (!hasLock) {
       api.log(
         `operation: ${operationId}, chain: ${chain}, method: ${method}, outcome: ${outcome}${byteDetail}`,
         "native.terminal.rpc"
+      );
+    },
+  });
+
+  api.sensitiveDataApproval = createSensitiveDataApprovalService({
+    dialog,
+    getParentWindow: () => mainWindow,
+    captureExecutionTarget: (request) => request.source === "native"
+      ? captureTerminalRpcTarget(request)
+      : null,
+    executionTargetMatches: (request, capturedTarget) => request.source !== "native" ||
+      captureTerminalRpcTarget(request).fingerprint === capturedTarget.fingerprint,
+    audit: ({ operationId, kind, source, outcome }) => {
+      api.log(
+        `operation: ${operationId}, kind: ${kind}, source: ${source}, outcome: ${outcome}`,
+        "sensitive.data.reveal"
       );
     },
   });

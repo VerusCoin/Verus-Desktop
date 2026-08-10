@@ -1,5 +1,7 @@
 
-module.exports = (api) => {  
+const { executeSensitiveReveal } = require("../sensitiveDataApproval");
+
+module.exports = (api) => {
   api.native.getAddressType = (address) => {
     if (address[0] === 'z') {
       if (address[1] === 'c') return 'sprout'
@@ -205,12 +207,20 @@ module.exports = (api) => {
     })
   }
 
-  api.native.get_privkey = (coin, address) => {
+  api.native.get_privkey = (coin, address, rpcTarget = null) => {
     let isZAaddr = false
     if (address[0] === 'z') isZAaddr = true
 
     return new Promise((resolve, reject) => {
-      api.native.callDaemon(coin, isZAaddr ? 'z_exportkey' : 'dumpprivkey', [address])
+      api.native.callDaemon(
+        coin,
+        isZAaddr ? 'z_exportkey' : 'dumpprivkey',
+        [address],
+        {
+          redactLogs: true,
+          ...(rpcTarget == null ? {} : { rpcTarget }),
+        }
+      )
       .then((jsonResult) => {
         resolve(jsonResult)
       })
@@ -339,29 +349,26 @@ module.exports = (api) => {
     })
   });
 
-  api.setPost('/native/get_privkey', (req, res, next) => {
+  api.setPost('/native/get_privkey', async (req, res, next) => {
     const coin = req.body.chainTicker;
     const address = req.body.address
 
-    api.native.get_privkey(coin, address)
-    .then((privkey) => {
-      if (!privkey) throw new Error(`No privkey found for ${address}`)
+    const retObj = await executeSensitiveReveal(
+      api,
+      req,
+      { kind: "private-key", source: "native", chainTicker: coin, address },
+      async (request, executionTarget) => {
+        const privkey = await api.native.get_privkey(
+          request.chainTicker,
+          request.address,
+          executionTarget && executionTarget.rpcTarget
+        );
+        if (!privkey) throw new Error(`No privkey found for ${request.address}`);
+        return privkey;
+      }
+    );
 
-      const retObj = {
-        msg: 'success',
-        result: privkey,
-      };
-  
-      res.send(JSON.stringify(retObj));  
-    })
-    .catch(error => {
-      const retObj = {
-        msg: 'error',
-        result: error.message,
-      };
-  
-      res.send(JSON.stringify(retObj));  
-    })
+    res.send(JSON.stringify(retObj));
   }, true);
 
   return api;

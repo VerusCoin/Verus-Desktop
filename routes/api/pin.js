@@ -16,6 +16,7 @@ const {
   readPinFile,
   storeNewPinFile,
 } = require("./utils/pinFile");
+const { executeSensitiveReveal } = require("./sensitiveDataApproval");
 
 module.exports = (api) => {
   api.pinDecryptAttempts = new Map();
@@ -121,9 +122,9 @@ module.exports = (api) => {
       return res.send(JSON.stringify({ msg: "error", result: "Pin file not found" }));
     }
 
+    let decryptedKey;
     try {
       let data = await readPinFile(pinFile);
-      let decryptedKey;
       try {
         decryptedKey = await decryptPinPayload(data, _key);
       } catch (primaryError) {
@@ -161,11 +162,25 @@ module.exports = (api) => {
 
       api.pinDecryptAttempts.delete(_pubkey);
       api.log(`pin ${_pubkey} decrypted`, "pin");
-      return res.send(JSON.stringify({ msg: "success", result: decryptedKey }));
     } catch (e) {
+      decryptedKey = null;
       recordFailedAttempt(api.pinDecryptAttempts, _pubkey);
       api.log(`pin ${_pubkey} decrypt err ${e.message}`, "pin");
       return res.send(JSON.stringify({ msg: "error", result: "Incorrect password." }));
+    }
+
+    try {
+      const retObj = await executeSensitiveReveal(
+        api,
+        req,
+        { kind: "seed", source: "pin", profile: _pubkey },
+        async () => decryptedKey
+      );
+      return res.send(JSON.stringify(retObj));
+    } finally {
+      // JavaScript strings cannot be zeroed, but release this backend
+      // reference immediately after the authorized response is constructed.
+      decryptedKey = null;
     }
   }, true);
 
