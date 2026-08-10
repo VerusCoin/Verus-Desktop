@@ -1,4 +1,5 @@
 stages:
+  - security
   - build
   - test
   - deploy
@@ -30,6 +31,20 @@ variables:
 ########################################################################################################################
 ########################################################################################################################
 ########################################################################################################################
+security:tests:
+  tags: [ "Verus Desktop" ]
+  image: asherd/agama-builder@sha256:cf2f972787bbc5d1ebbb312cefd3d41c2f76084222485e6b3f4b93eb2f58cb2a
+  stage: security
+  variables:
+    NODE_OPTIONS: --openssl-legacy-provider
+  script:
+    - yarn install --frozen-lockfile --non-interactive
+    - yarn run test:security
+    - cd gui/Verus-Desktop-GUI/react
+    - yarn install --frozen-lockfile --non-interactive
+    - yarn run test:security
+
+########################################################################################################################
 ####START####                                          Build Stage                                        ####START#####
 ########################################################################################################################
 ########################################################################################################################
@@ -37,10 +52,11 @@ variables:
 ########################################################################################################################
 build:linux:
   tags: [ "Verus Desktop" ]
-  image: asherd/agama-builder
+  image: asherd/agama-builder@sha256:cf2f972787bbc5d1ebbb312cefd3d41c2f76084222485e6b3f4b93eb2f58cb2a
   stage: build
   variables:
     DOCKER_DRIVER: overlay2
+    NODE_OPTIONS: --openssl-legacy-provider
     KOMODO_CLI_PACKAGE: komodo-${KOMODO_VERSION}-linux.tar.gz
     KOMODO_CLI_SHA256: ed28bce09176c212c1eac9abf9fce41c948ef1199764b03b607a461146952107
     PIRATE_CLI_PACKAGE: pirate-cli-ubuntu2004-v${PIRATE_VERSION}.zip
@@ -56,7 +72,7 @@ build:linux:
       else
       export POST_COMMENT="${POST_COMMENT}Using ${UPSTREAM_TRIGGER}/${UPSTREAM_CLI_BRANCH} binaries."; fi
     - cd gui/Verus-Desktop-GUI/react
-    - yarn install
+    - yarn install --frozen-lockfile --non-interactive
     - yarn run build
     - cd ../../..
     - mkdir -p assets/bin/linux64/verusd
@@ -75,34 +91,24 @@ build:linux:
     - rm ${PIRATE_CLI_PACKAGE}
     - sed -i "s/process.env.INFURA_PROJECT_ID/'${INFURA_PROJECT_ID}'/g" keys/infura.js
     - sed -i "s/process.env.ETHERSCAN_API_KEY/'${ETHERSCAN_KEY}'/g" keys/etherscan.js
-    - yarn install
-    - git clone https://github.com/VerusCoin/verus-login-consent-client.git
-    - cd verus-login-consent-client
-    - yarn install
-    - yarn run build
-    - mkdir -p ../assets/plugins/builtin/verus-login-consent-client
-    - cp build/* ../assets/plugins/builtin/verus-login-consent-client
-    - cd ..
-    - rm -rf verus-login-consent-client
-    - git clone https://github.com/VerusCoin/verus-pbaas-visualizer.git
-    - cd verus-pbaas-visualizer
-    - yarn install
-    - yarn run build
-    - mkdir -p ../assets/plugins/builtin/verus-pbaas-visualizer
-    - cp build/* ../assets/plugins/builtin/verus-pbaas-visualizer
-    - cd ..
-    - rm -rf verus-pbaas-visualizer
+    - yarn install --frozen-lockfile --non-interactive
+    - bash scripts/buildBuiltinPlugins.sh
   script:
     - yarn run dist
+    - node scripts/writeArtifactChecksums.js "dist/${VERUS_APPIMAGE_X64}"
     - cd dist
-    - gsutil cp ${VERUS_APPIMAGE_X64} $STAGING/Verus-Desktop/$CI_COMMIT_REF_NAME/${VERUS_VERSION}/
+    - gsutil cp "${VERUS_APPIMAGE_X64}" "${VERUS_APPIMAGE_X64}.sha256" "$STAGING/Verus-Desktop/$CI_COMMIT_REF_NAME/${VERUS_VERSION}/"
+  artifacts:
+    paths:
+      - dist/${VERUS_APPIMAGE_X64}.sha256
 
 build:linux:arm64:
   tags: [ "Verus Desktop" ]
-  image: asherd/agama-builder
+  image: asherd/agama-builder@sha256:cf2f972787bbc5d1ebbb312cefd3d41c2f76084222485e6b3f4b93eb2f58cb2a
   stage: build
   variables:
     DOCKER_DRIVER: overlay2
+    NODE_OPTIONS: --openssl-legacy-provider
     PIRATE_CLI_PACKAGE: pirate-cli-aarch64-v${PIRATE_VERSION}.zip
     PIRATE_CLI_SHA256: c6a3b13881155fb11a8743a9d319254a0ca70f99c14382fb28384446fffe52c5
   before_script:
@@ -116,7 +122,7 @@ build:linux:arm64:
       else
       export POST_COMMENT="${POST_COMMENT}Using ${UPSTREAM_TRIGGER}/${UPSTREAM_CLI_BRANCH} binaries."; fi
     - cd gui/Verus-Desktop-GUI/react
-    - yarn install
+    - yarn install --frozen-lockfile --non-interactive
     - yarn run build
     - cd ../../..
     - mkdir -p assets/bin/linux64/verusd
@@ -130,27 +136,16 @@ build:linux:arm64:
     - rm ${PIRATE_CLI_PACKAGE}
     - sed -i "s/process.env.INFURA_PROJECT_ID/'${INFURA_PROJECT_ID}'/g" keys/infura.js
     - sed -i "s/process.env.ETHERSCAN_API_KEY/'${ETHERSCAN_KEY}'/g" keys/etherscan.js
-    - yarn install
-    - git clone https://github.com/VerusCoin/verus-login-consent-client.git
-    - cd verus-login-consent-client
-    - yarn install
-    - yarn run build
-    - mkdir -p ../assets/plugins/builtin/verus-login-consent-client
-    - cp build/* ../assets/plugins/builtin/verus-login-consent-client
-    - cd ..
-    - rm -rf verus-login-consent-client
-    - git clone https://github.com/VerusCoin/verus-pbaas-visualizer.git
-    - cd verus-pbaas-visualizer
-    - yarn install
-    - yarn run build
-    - mkdir -p ../assets/plugins/builtin/verus-pbaas-visualizer
-    - cp build/* ../assets/plugins/builtin/verus-pbaas-visualizer
-    - cd ..
-    - rm -rf verus-pbaas-visualizer
+    - yarn install --frozen-lockfile --non-interactive
+    - bash scripts/buildBuiltinPlugins.sh
   script:
     - yarn run dist --arm64
+    - node scripts/writeArtifactChecksums.js "dist/${VERUS_APPIMAGE_ARM64}"
     - cd dist
-    - gsutil cp ${VERUS_APPIMAGE_ARM64} $STAGING/Verus-Desktop/$CI_COMMIT_REF_NAME/${VERUS_VERSION}/
+    - gsutil cp "${VERUS_APPIMAGE_ARM64}" "${VERUS_APPIMAGE_ARM64}.sha256" "$STAGING/Verus-Desktop/$CI_COMMIT_REF_NAME/${VERUS_VERSION}/"
+  artifacts:
+    paths:
+      - dist/${VERUS_APPIMAGE_ARM64}.sha256
 ########################################################################################################################
 ####END####                                              LINUX                                               ####END####
 ########################################################################################################################
@@ -159,9 +154,10 @@ build:linux:arm64:
 build:windows:
   tags: [ "Verus Desktop" ]
   stage: build
-  image: asherd/agama-builder:windows
+  image: asherd/agama-builder@sha256:19b855a8d5751acb6c68bb257246da4c2532293be10c33db537703b48beedc3b
   variables:
     DOCKER_DRIVER: overlay2
+    NODE_OPTIONS: --openssl-legacy-provider
     KOMODO_CLI_PACKAGE: komodo-${KOMODO_VERSION}-win.zip
     KOMODO_CLI_SHA256: 0b36821ebccdaf6bc060dc31083e6d8f48f7f8bc35e519b127bf1ccc05cf9890
     PIRATE_CLI_PACKAGE: pirate-cli-windows-v${PIRATE_VERSION}.zip
@@ -177,7 +173,7 @@ build:windows:
       else
       export POST_COMMENT="${POST_COMMENT}Using ${UPSTREAM_TRIGGER}/${UPSTREAM_CLI_BRANCH} binaries."; fi
     - cd gui/Verus-Desktop-GUI/react
-    - yarn install
+    - yarn install --frozen-lockfile --non-interactive
     - yarn run build
     - cd ../../..
     - mkdir -p assets/bin/win64/komodod
@@ -198,27 +194,16 @@ build:windows:
     - rm ${PIRATE_CLI_PACKAGE}
     - sed -i "s/process.env.INFURA_PROJECT_ID/'${INFURA_PROJECT_ID}'/g" keys/infura.js
     - sed -i "s/process.env.ETHERSCAN_API_KEY/'${ETHERSCAN_KEY}'/g" keys/etherscan.js
-    - yarn install
-    - git clone https://github.com/VerusCoin/verus-login-consent-client.git
-    - cd verus-login-consent-client
-    - yarn install
-    - yarn run build
-    - mkdir -p ../assets/plugins/builtin/verus-login-consent-client
-    - cp build/* ../assets/plugins/builtin/verus-login-consent-client
-    - cd ..
-    - rm -rf verus-login-consent-client
-    - git clone https://github.com/VerusCoin/verus-pbaas-visualizer.git
-    - cd verus-pbaas-visualizer
-    - yarn install
-    - yarn run build
-    - mkdir -p ../assets/plugins/builtin/verus-pbaas-visualizer
-    - cp build/* ../assets/plugins/builtin/verus-pbaas-visualizer
-    - cd ..
-    - rm -rf verus-pbaas-visualizer
+    - yarn install --frozen-lockfile --non-interactive
+    - bash scripts/buildBuiltinPlugins.sh
   script:
     - yarn run dist-win
+    - node scripts/writeArtifactChecksums.js "dist/${VERUS_WINDOWS_NSIS}"
     - cd dist
-    - gsutil cp ${VERUS_WINDOWS_NSIS} $STAGING/Verus-Desktop/$CI_COMMIT_REF_NAME/${VERUS_VERSION}/
+    - gsutil cp "${VERUS_WINDOWS_NSIS}" "${VERUS_WINDOWS_NSIS}.sha256" "$STAGING/Verus-Desktop/$CI_COMMIT_REF_NAME/${VERUS_VERSION}/"
+  artifacts:
+    paths:
+      - dist/${VERUS_WINDOWS_NSIS}.sha256
 
 ########################################################################################################################
 ####END####                                             WINDOWS                                              ####END####
@@ -229,6 +214,7 @@ build:mac:
   stage: build
   tags: ["Ventura"]
   variables:
+    NODE_OPTIONS: --openssl-legacy-provider
     KOMODO_CLI_PACKAGE: komodo-${KOMODO_VERSION}-mac.zip
     KOMODO_CLI_SHA256: 1a092af97b34f4e2ea99b95a91599fc4fdca3881c7e3afa468a5df043a460694
     PIRATE_CLI_PACKAGE: pirate-cli-MacOS-v${PIRATE_VERSION}.zip
@@ -244,7 +230,7 @@ build:mac:
       else
       export POST_COMMENT="${POST_COMMENT}Using ${UPSTREAM_TRIGGER}/${UPSTREAM_CLI_BRANCH} binaries."; fi
     - cd gui/Verus-Desktop-GUI/react
-    - yarn install
+    - yarn install --frozen-lockfile --non-interactive
     - yarn run build
     - cd ../../..
     - gsutil cp $STAGING/$VERUS_CLI_MACOS .
@@ -263,25 +249,14 @@ build:mac:
     - rm ${PIRATE_CLI_PACKAGE}
     - sed -i -e "s/process.env.INFURA_PROJECT_ID/'${INFURA_PROJECT_ID}'/g" keys/infura.js
     - sed -i -e "s/process.env.ETHERSCAN_API_KEY/'${ETHERSCAN_KEY}'/g" keys/etherscan.js
-    - yarn install
-    - git clone https://github.com/VerusCoin/verus-login-consent-client.git
-    - cd verus-login-consent-client
-    - yarn install
-    - yarn run build
-    - mkdir -p ../assets/plugins/builtin/verus-login-consent-client
-    - cp build/* ../assets/plugins/builtin/verus-login-consent-client
-    - cd ..
-    - rm -rf verus-login-consent-client
-    - git clone https://github.com/VerusCoin/verus-pbaas-visualizer.git
-    - cd verus-pbaas-visualizer
-    - yarn install
-    - yarn run build
-    - mkdir -p ../assets/plugins/builtin/verus-pbaas-visualizer
-    - cp build/* ../assets/plugins/builtin/verus-pbaas-visualizer
-    - cd ..
-    - rm -rf verus-pbaas-visualizer
+    - yarn install --frozen-lockfile --non-interactive
+    - bash scripts/buildBuiltinPlugins.sh
   script:
     - export USE_HARD_LINKS=false
     - yarn run dist
+    - node scripts/writeArtifactChecksums.js "dist/${VERUS_MACOS}"
     - cd dist
-    - gsutil cp ${VERUS_MACOS} $STAGING/Verus-Desktop/$CI_COMMIT_REF_NAME/${VERUS_VERSION}/
+    - gsutil cp "${VERUS_MACOS}" "${VERUS_MACOS}.sha256" "$STAGING/Verus-Desktop/$CI_COMMIT_REF_NAME/${VERUS_VERSION}/"
+  artifacts:
+    paths:
+      - dist/${VERUS_MACOS}.sha256

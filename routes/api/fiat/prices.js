@@ -47,56 +47,63 @@ module.exports = (api) => {
 
   api.fiat.get_fiatrates = () => {
     return new Promise(async (resolve, reject) => {
-      const url = `https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml`
-
-      try {
-        const response = await requestXml(
-          "GET",
-          url
-        );
-
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(response, "text/xml");
-        let exchangeRates = {}
-
-        x = xmlDoc.getElementsByTagName('Cube');
-        for (i = 0; i < x.length; i++) {
-          const currency = x[i].getAttribute('currency')
-          const rate = x[i].getAttribute('rate')
-
-          if (
-            currency != null &&
-            /^[a-zA-Z]+$/.test(currency) &&
-            rate != null &&
-            !isNaN(Number(rate))
-          ) {
-            exchangeRates[currency] = Number(rate)
-          }
+      // Temporary until electron is updated to handle new ECP auth
+      resolve({
+        msg: "success", result: {
+          ["USD"]: 1
         }
+      });
+      
+      // const url = `https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml`
 
-        exchangeRates['EUR'] = 1
+      // try {
+      //   const response = await requestXml(
+      //     "GET",
+      //     url
+      //   );
 
-        for (const currencyTicker in exchangeRates) {
-          if (currencyTicker !== 'USD') {
-            if (
-              exchangeRates["USD"] == null ||
-              exchangeRates["USD"] == 0
-            ) {
-              exchangeRates[currencyTicker] = null;
-            } else {
-              exchangeRates[currencyTicker] =
-                exchangeRates[currencyTicker] / exchangeRates["USD"];
-            }
-          }
-        }
+      //   const parser = new DOMParser();
+      //   const xmlDoc = parser.parseFromString(response, "text/xml");
+      //   let exchangeRates = {}
 
-        exchangeRates['USD'] = 1
+      //   x = xmlDoc.getElementsByTagName('Cube');
+      //   for (i = 0; i < x.length; i++) {
+      //     const currency = x[i].getAttribute('currency')
+      //     const rate = x[i].getAttribute('rate')
 
-        resolve({ msg: "success", result: exchangeRates });
-      } catch(e) {
-        api.log(`fiat price error: unable to request ${url}`, 'fiat.prices');
-        reject(new Error(`Unable to request ${url}`))
-      }
+      //     if (
+      //       currency != null &&
+      //       /^[a-zA-Z]+$/.test(currency) &&
+      //       rate != null &&
+      //       !isNaN(Number(rate))
+      //     ) {
+      //       exchangeRates[currency] = Number(rate)
+      //     }
+      //   }
+
+      //   exchangeRates['EUR'] = 1
+
+      //   for (const currencyTicker in exchangeRates) {
+      //     if (currencyTicker !== 'USD') {
+      //       if (
+      //         exchangeRates["USD"] == null ||
+      //         exchangeRates["USD"] == 0
+      //       ) {
+      //         exchangeRates[currencyTicker] = null;
+      //       } else {
+      //         exchangeRates[currencyTicker] =
+      //           exchangeRates[currencyTicker] / exchangeRates["USD"];
+      //       }
+      //     }
+      //   }
+
+      //   exchangeRates['USD'] = 1
+
+      //   resolve({ msg: "success", result: exchangeRates });
+      // } catch(e) {
+      //   api.log(`fiat price error: unable to request ${url}`, 'fiat.prices');
+      //   reject(new Error(`Unable to request ${url}`))
+      // }
     })
   }
 

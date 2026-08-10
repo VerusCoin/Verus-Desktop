@@ -140,7 +140,7 @@ const normalizeAgainstTemplate = (
   return value;
 };
 
-const validateSecuritySensitiveValues = (config) => {
+const validateSecuritySensitiveValues = (config, options = {}) => {
   const { main, electrum } = config.general;
   if (main.host !== "127.0.0.1") throw new Error("config.general.main.host must be 127.0.0.1");
   if (!Number.isInteger(main.agamaPort) || main.agamaPort < 1024 || main.agamaPort > 65535) {
@@ -149,7 +149,7 @@ const validateSecuritySensitiveValues = (config) => {
   if (main.encryptApiPost !== true) {
     throw new Error("config.general.main.encryptApiPost cannot be disabled");
   }
-  if (main.dev !== false) {
+  if (main.dev !== false && options.allowDev !== true) {
     throw new Error("config.general.main.dev can only be enabled with the devmode command-line option");
   }
   if (!Number.isInteger(electrum.socketTimeout) || electrum.socketTimeout < 1000 || electrum.socketTimeout > 120000) {
@@ -178,7 +178,7 @@ const validateSecuritySensitiveValues = (config) => {
 
 const normalizeConfig = (candidate, template, options = {}) => {
   const normalized = normalizeAgainstTemplate(candidate, template, "config", options);
-  validateSecuritySensitiveValues(normalized);
+  validateSecuritySensitiveValues(normalized, options);
   return normalized;
 };
 

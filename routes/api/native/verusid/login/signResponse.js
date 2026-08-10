@@ -40,15 +40,28 @@ module.exports = (api) => {
 
   api.setPost("/native/verusid/login/sign_response", async (req, res, next) => {
     const { response } = req.body;
+    let pendingClaim = null;
 
     try {
+      if (req.api_header && req.api_header.app_id === "VERUS_LOGIN_CONSENT_UI") {
+        if (
+          api.loginConsentUi == null ||
+          typeof api.loginConsentUi.beginPendingResponse !== "function"
+        ) {
+          throw new Error("Login-consent session validation is unavailable");
+        }
+        pendingClaim = api.loginConsentUi.beginPendingResponse(response);
+      }
+      const signedResponse = await api.native.verusid.login.sign_response(response);
+      if (pendingClaim != null) pendingClaim.consume();
       res.send(
         JSON.stringify({
           msg: "success",
-          result: await api.native.verusid.login.sign_response(response),
+          result: signedResponse,
         })
       );
     } catch (e) {
+      if (pendingClaim != null) pendingClaim.release();
       res.send(
         JSON.stringify({
           msg: "error",

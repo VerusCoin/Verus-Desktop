@@ -41,7 +41,9 @@ contextBridge.exposeInMainWorld("bridge", {
 ipcRenderer.on('ipc', (_, msg) => {
   try {
     if (msg.type === 'response' || msg.type === 'push'|| msg.type === 'init') {
-      window.postMessage(JSON.stringify(msg), '*');
+      // Packaged built-ins are served from the authenticated loopback origin;
+      // never broadcast privileged initialization data to an arbitrary origin.
+      window.postMessage(JSON.stringify(msg), window.location.origin);
     }
   } catch (err) {
     console.error(err);

@@ -1,4 +1,3 @@
-const { dialog } = require("electron");
 const { isSafeWalletFilename, isValidChainTicker } = require("./security");
 
 module.exports = (api) => {  
@@ -15,16 +14,6 @@ module.exports = (api) => {
       if (omitemptyaddresses != null && typeof omitemptyaddresses !== "boolean") {
         throw new Error("omitemptyaddresses must be a boolean");
       }
-      const confirmation = await dialog.showMessageBox({
-        type: "warning",
-        title: "Export Wallet?",
-        message: `Export all private keys for ${chain} to ${filename}? The exported file is sensitive and unencrypted.`,
-        buttons: ["Cancel", "Export"],
-        defaultId: 0,
-        cancelId: 0,
-      });
-      if (confirmation.response !== 1) throw new Error("Wallet export cancelled");
-
       res.send(
         JSON.stringify({
           msg: "success",

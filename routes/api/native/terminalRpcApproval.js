@@ -10,11 +10,9 @@ const {
   escapeInvisibleCharacters,
   formatTerminalRpcRequest,
 } = require("./terminalRpcSecurity");
+const { AUTHORIZATION_SCOPES } = require("./nativeAuthorization");
 
 const DEFAULT_MAX_SENSITIVE_OUTPUT_BYTES = 16 * 1024 * 1024;
-const DEFAULT_MIN_PROMPT_INTERVAL_MS = 1500;
-const DEFAULT_MAX_PROMPTS_PER_WINDOW = 5;
-const DEFAULT_PROMPT_WINDOW_MS = 60 * 1000;
 const MAX_DAEMON_FAILURE_DETAIL_BYTES = 8 * 1024;
 
 const fixedError = (code, message) => ({ status: "error", code, message });
@@ -110,6 +108,7 @@ const createTerminalRpcApprovalService = (dependencies = {}) => {
     dialog,
     getParentWindow,
     executeRpc,
+    nativeAuthorization,
     captureExecutionTarget = () => null,
     executionTargetMatches = (request, capturedTarget) =>
       Object.is(captureExecutionTarget(request), capturedTarget),
@@ -121,9 +120,6 @@ const createTerminalRpcApprovalService = (dependencies = {}) => {
     audit = () => {},
     now = () => Date.now(),
     maxSensitiveOutputBytes = DEFAULT_MAX_SENSITIVE_OUTPUT_BYTES,
-    minPromptIntervalMs = DEFAULT_MIN_PROMPT_INTERVAL_MS,
-    maxPromptsPerWindow = DEFAULT_MAX_PROMPTS_PER_WINDOW,
-    promptWindowMs = DEFAULT_PROMPT_WINDOW_MS,
   } = dependencies;
 
   if (
@@ -136,6 +132,9 @@ const createTerminalRpcApprovalService = (dependencies = {}) => {
   if (typeof getParentWindow !== "function") {
     throw new TypeError("getParentWindow must be a function");
   }
+  if (nativeAuthorization == null || typeof nativeAuthorization.authorize !== "function") {
+    throw new TypeError("The shared nativeAuthorization coordinator is required");
+  }
   if (typeof executeRpc !== "function") throw new TypeError("executeRpc must be a function");
   if (typeof captureExecutionTarget !== "function") {
     throw new TypeError("captureExecutionTarget must be a function");
@@ -147,7 +146,6 @@ const createTerminalRpcApprovalService = (dependencies = {}) => {
     throw new TypeError("RPC policy dependencies must be functions");
   }
   let privilegedRequestActive = false;
-  const promptTimes = [];
 
   const auditSafe = (event) => {
     try {
@@ -156,22 +154,6 @@ const createTerminalRpcApprovalService = (dependencies = {}) => {
       // Audit failures must not disclose data or make an executed RPC appear
       // retryable.
     }
-  };
-
-  const checkAndRecordPromptRate = () => {
-    const currentTime = now();
-    while (promptTimes.length && currentTime - promptTimes[0] >= promptWindowMs) {
-      promptTimes.shift();
-    }
-    const lastPrompt = promptTimes[promptTimes.length - 1];
-    if (
-      promptTimes.length >= maxPromptsPerWindow ||
-      (lastPrompt != null && currentTime - lastPrompt < minPromptIntervalMs)
-    ) {
-      return false;
-    }
-    promptTimes.push(currentTime);
-    return true;
   };
 
   const validateDestination = (destination) => {
@@ -337,10 +319,6 @@ const createTerminalRpcApprovalService = (dependencies = {}) => {
         auditSafe({ operationId, chain: request.chainTicker, method: request.method, outcome: "window-unavailable" });
         return fixedError("WINDOW_UNAVAILABLE", "Focus the Verus Desktop window before running this command.");
       }
-      if (!checkAndRecordPromptRate()) {
-        auditSafe({ operationId, chain: request.chainTicker, method: request.method, outcome: "rate-limited" });
-        return fixedError("RATE_LIMITED", "Too many terminal approval prompts. Wait and try again.");
-      }
       try {
         executionTarget = captureExecutionTarget(request);
       } catch (error) {
@@ -367,29 +345,38 @@ const createTerminalRpcApprovalService = (dependencies = {}) => {
         return fixedError("DISPLAY_FAILED", "Unable to display this command safely.");
       }
 
-      let confirmation;
-      try {
-        confirmation = await dialog.showMessageBox(parentWindow, {
-          type: "warning",
-          title: highRiskWarning ? "Confirm Funds or Wallet-Authority Command" : "Confirm Daemon Command",
-          message:
-            `This daemon command is not read-only. Running it once may change wallet or node state.${highRiskWarning}${sensitiveWarning}${sensitiveFileWarning}`,
-          detail:
-            "Review the backend-decoded request below. Secret-valued parameters are redacted in this trusted dialog; the backend will execute the frozen original exactly once.\n\n" +
-            requestForDisplay,
-          buttons: ["Cancel", sensitiveOutput ? "Choose Save Location…" : "Run Once"],
-          defaultId: 0,
-          cancelId: 0,
-          noLink: true,
-        });
-      } catch (error) {
-        auditSafe({ operationId, chain: request.chainTicker, method: request.method, outcome: "dialog-error" });
-        return fixedError("DIALOG_FAILED", "Unable to obtain terminal command approval.");
-      }
+      const authorizationPrompt = {
+        scope: AUTHORIZATION_SCOPES.TERMINAL_RPC,
+        actionId: `terminal-rpc:${request.method}`,
+        title: highRiskWarning ? "Confirm Funds or Wallet-Authority Command" : "Confirm Daemon Command",
+        message:
+          `This daemon command is not read-only. Running it once may change wallet or node state.${highRiskWarning}${sensitiveWarning}${sensitiveFileWarning}`,
+        detail:
+          "Review the backend-decoded request below. Secret-valued parameters are redacted in this trusted dialog; the backend will execute the frozen original exactly once.\n\n" +
+          requestForDisplay,
+        confirmLabel: sensitiveOutput ? "Choose Save Location…" : "Run Once",
+      };
 
-      if (confirmation == null || confirmation.response !== 1) {
+      let authorization;
+      try {
+        authorization = await nativeAuthorization.authorize(authorizationPrompt);
+      } catch (error) {
+        authorization = null;
+      }
+      if (authorization && authorization.status === "cancelled") {
         auditSafe({ operationId, chain: request.chainTicker, method: request.method, outcome: "approval-cancelled" });
         return { status: "cancelled", stage: "approval" };
+      }
+      if (!authorization || authorization.status !== "approved") {
+        auditSafe({ operationId, chain: request.chainTicker, method: request.method, outcome: "authorization-failed" });
+        return fixedError(
+          authorization && typeof authorization.code === "string"
+            ? authorization.code
+            : "AUTHORIZATION_FAILED",
+          authorization && typeof authorization.message === "string"
+            ? authorization.message
+            : "Unable to obtain terminal command approval."
+        );
       }
       if (getParentWindow() !== parentWindow || !isAvailableWindow(parentWindow)) {
         auditSafe({ operationId, chain: request.chainTicker, method: request.method, outcome: "window-lost-after-approval" });
