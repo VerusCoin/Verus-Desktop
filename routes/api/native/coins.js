@@ -1,9 +1,21 @@
 const { shell, dialog } = require('electron');
+const fs = require("fs");
+const path = require("path");
+const { createHash } = require("crypto");
 const { VERUS_WIKI_WALLET_BACKUPS } = require("../utils/constants/urls");
+const { normalizeRpcPort, readRpcPort } = require("../utils/rpcPort");
 const {
+  MAX_DAEMON_CONFIG_BYTES,
+  daemonConfigurationSecurityDescriptor,
+  effectiveStartupEnablesChainWriting,
   validateLaunchConfig,
   validateStartupOptions,
 } = require("./security");
+
+const STARTUP_AUTHORIZATION_ROUTES = new Set([
+  "/native/coins/activate",
+  "/native/coins/restart",
+]);
 
 module.exports = (api) => {
   const getChainValidationContext = (chainTicker) => {
@@ -75,6 +87,232 @@ module.exports = (api) => {
       }
     }
     return true;
+  };
+
+  const chainParamsToStartupOptions = (chainTicker) => {
+    const options = [];
+    const chainParams = api.chainParams[chainTicker] || {};
+    for (const [key, rawValue] of Object.entries(chainParams)) {
+      const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+      for (const value of values) options.push(`-${key}=${value}`);
+    }
+    return options;
+  };
+
+  const resolveDaemonDataDirectory = (chainTicker, launchConfig) => {
+    const configuredDataDirs =
+      api.appConfig && api.appConfig.coin && api.appConfig.coin.native &&
+      api.appConfig.coin.native.dataDir;
+    const configuredDataDir = configuredDataDirs && configuredDataDirs[chainTicker];
+    if (typeof configuredDataDir === "string" && configuredDataDir.length > 0) {
+      return configuredDataDir;
+    }
+
+    const cachedDataDir = api.paths && api.paths[`${chainTicker.toLowerCase()}DataDir`];
+    if (typeof cachedDataDir === "string" && cachedDataDir.length > 0) {
+      return cachedDataDir;
+    }
+
+    const relativeDirectory = launchConfig.dirNames[process.platform];
+    const homeDirectory =
+      typeof global.HOME === "string" && global.HOME.length > 0
+        ? global.HOME
+        : process.env.HOME;
+    if (typeof homeDirectory !== "string" || homeDirectory.length === 0) {
+      throw new Error("Unable to resolve the daemon data directory safely");
+    }
+    if (global.USB_MODE || process.platform !== "darwin") {
+      return path.resolve(homeDirectory, relativeDirectory);
+    }
+    return path.resolve(homeDirectory, "Library", "Application Support", relativeDirectory);
+  };
+
+  const readDaemonConfiguration = (configurationPath) => {
+    try {
+      const stat = fs.statSync(configurationPath);
+      if (!stat.isFile()) {
+        return { content: "", indeterminate: true, state: "not-a-file" };
+      }
+      if (stat.size > MAX_DAEMON_CONFIG_BYTES) {
+        return { content: "", indeterminate: true, state: `oversized:${stat.size}` };
+      }
+      return {
+        content: fs.readFileSync(configurationPath, "utf8"),
+        indeterminate: false,
+        state: "read",
+      };
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        return { content: "", indeterminate: false, state: "absent" };
+      }
+      return {
+        content: "",
+        indeterminate: true,
+        state: `unreadable:${error && error.code ? error.code : "unknown"}`,
+      };
+    }
+  };
+
+  const fingerprintValues = (values) => {
+    const fingerprint = createHash("sha256");
+    for (const value of values) {
+      fingerprint.update(String(value));
+      fingerprint.update("\0");
+    }
+    return fingerprint.digest("hex");
+  };
+
+  api.native.captureStartupSecurityState = (
+    chainTicker,
+    launchConfig,
+    startupOptions
+  ) => {
+    api.native.validateLaunchConfig(chainTicker, launchConfig, startupOptions);
+    const commandLineOptions = [
+      ...chainParamsToStartupOptions(chainTicker),
+      ...validateStartupOptions(startupOptions, chainTicker),
+      ...validateStartupOptions(launchConfig.startupOptions, chainTicker),
+    ];
+    const dataDirectory = resolveDaemonDataDirectory(chainTicker, launchConfig);
+    const configurationPath = path.resolve(
+      dataDirectory,
+      `${launchConfig.confName == null ? chainTicker : launchConfig.confName}.conf`
+    );
+    const configuration = readDaemonConfiguration(configurationPath);
+    let chainWriting = configuration.indeterminate;
+    if (!chainWriting) {
+      try {
+        chainWriting = effectiveStartupEnablesChainWriting(
+          commandLineOptions,
+          configuration.content
+        );
+      } catch (error) {
+        chainWriting = true;
+      }
+    }
+
+    let configurationSecurityDescriptor;
+    try {
+      configurationSecurityDescriptor = daemonConfigurationSecurityDescriptor(
+        configuration.content
+      );
+    } catch (error) {
+      configurationSecurityDescriptor = "indeterminate";
+    }
+    return Object.freeze({
+      chainWriting,
+      configurationPath,
+      configurationState: configuration.state,
+      fingerprint: fingerprintValues([
+        chainTicker,
+        launchConfig.daemon,
+        configurationPath,
+        configuration.indeterminate,
+        JSON.stringify(commandLineOptions),
+        configurationSecurityDescriptor,
+      ]),
+    });
+  };
+
+  api.native.captureActivationSecurityState = async (
+    chainTicker,
+    launchConfig,
+    startupOptions
+  ) => {
+    // Activation may only attach to a daemon whose RPC port is already in
+    // use. In that branch the launch options are never evaluated by
+    // startDaemon, so do only structural/chain validation before the port
+    // check. A port that becomes free afterwards is handled fail-closed by
+    // assertStartupAuthorization when the spawn-only option supplier runs.
+    api.native.validateLaunchConfig(
+      chainTicker,
+      launchConfig,
+      startupOptions,
+      false
+    );
+
+    const dataDirectory = resolveDaemonDataDirectory(chainTicker, launchConfig);
+    const configurationPath = path.resolve(
+      dataDirectory,
+      `${launchConfig.confName == null ? chainTicker : launchConfig.confName}.conf`
+    );
+    const configuration = readDaemonConfiguration(configurationPath);
+    const configuredRpcPort = configuration.indeterminate
+      ? { found: false, port: null }
+      : readRpcPort(configuration.content);
+    if (configuredRpcPort.found && configuredRpcPort.port == null) {
+      throw new Error(`Invalid RPC port configured for ${chainTicker}`);
+    }
+    const candidatePort =
+      configuredRpcPort.port ||
+      normalizeRpcPort(api.assetChainPorts && api.assetChainPorts[chainTicker]) ||
+      normalizeRpcPort(api.assetChainPortsDefault && api.assetChainPortsDefault[chainTicker]) ||
+      normalizeRpcPort(launchConfig.fallbackPort);
+
+    if (candidatePort != null && typeof api.checkPort === "function") {
+      const portStatus = await api.checkPort(candidatePort);
+      if (portStatus === "UNAVAILABLE") {
+        let configurationSecurityDescriptor;
+        try {
+          configurationSecurityDescriptor = daemonConfigurationSecurityDescriptor(
+            configuration.content
+          );
+        } catch (error) {
+          configurationSecurityDescriptor = "indeterminate";
+        }
+        return Object.freeze({
+          attachOnly: true,
+          chainWriting: false,
+          configurationPath,
+          configurationState: configuration.state,
+          fingerprint: fingerprintValues([
+            "attach-existing-daemon",
+            chainTicker,
+            launchConfig.daemon,
+            configurationPath,
+            candidatePort,
+            configurationSecurityDescriptor,
+          ]),
+        });
+      }
+    }
+
+    return api.native.captureStartupSecurityState(
+      chainTicker,
+      launchConfig,
+      startupOptions
+    );
+  };
+
+  api.native.assertStartupAuthorization = (
+    chainTicker,
+    launchConfig,
+    startupOptions,
+    nativeAuthorizationContext
+  ) => {
+    const startupState = api.native.captureStartupSecurityState(
+      chainTicker,
+      launchConfig,
+      startupOptions
+    );
+    if (!startupState.chainWriting) return startupState;
+    if (
+      typeof api.isIrreversibleAuthorizationEnabled === "function" &&
+      api.isIrreversibleAuthorizationEnabled() === false
+    ) {
+      return startupState;
+    }
+    if (
+      nativeAuthorizationContext == null ||
+      nativeAuthorizationContext.status !== "approved" ||
+      !STARTUP_AUTHORIZATION_ROUTES.has(nativeAuthorizationContext.actionId) ||
+      nativeAuthorizationContext.startupFingerprint !== startupState.fingerprint
+    ) {
+      throw new Error(
+        "Daemon chain-writing settings changed or were not authorized; the daemon was not started"
+      );
+    }
+    return startupState;
   };
 
   api.ignoreNativeBackup = () => {
@@ -171,7 +409,12 @@ module.exports = (api) => {
     });
   };
 
-  api.native.addCoin = (chainTicker, launchConfig, startupOptions) => {
+  api.native.addCoin = (
+    chainTicker,
+    launchConfig,
+    startupOptions,
+    nativeAuthorizationContext = null
+  ) => {
     // Startup options are irrelevant when startDaemon attaches to an existing
     // process. Keep structural and chain-identity validation eager, but defer
     // option validation until startDaemon has decided it will spawn.
@@ -184,6 +427,18 @@ module.exports = (api) => {
     let { daemon, fallbackPort, dirNames, confName, tags } = launchConfig;
 
     const getStartupParams = () => {
+      // The option supplier may run after an approved HTTP request has timed
+      // out or disconnected (restart deliberately schedules daemon startup).
+      // Re-enter the shared execution guard before using that authorization.
+      if (typeof api.assertProtectedActionExecutionActive === "function") {
+        api.assertProtectedActionExecutionActive();
+      }
+      api.native.assertStartupAuthorization(
+        chainTicker,
+        launchConfig,
+        startupOptions,
+        nativeAuthorizationContext
+      );
       api.native.validateLaunchConfig(
         chainTicker,
         launchConfig,
@@ -245,7 +500,8 @@ module.exports = (api) => {
       const result = await api.native.addCoin(
         chainTicker,
         launchConfig,
-        startupOptions
+        startupOptions,
+        req.native_authorization
       );
 
       return res.send(JSON.stringify({

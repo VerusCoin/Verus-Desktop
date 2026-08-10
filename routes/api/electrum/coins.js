@@ -1,6 +1,6 @@
 const { getRandomIntInclusive } = require('agama-wallet-lib/src/utils');
-const { dialog } = require("electron");
 const { validateElectrumServerList } = require("./serverValidation");
+const { AUTHORIZATION_SCOPES } = require("../native/nativeAuthorization");
 
 module.exports = (api) => {
   api.findCoinName = (network) => {
@@ -97,24 +97,39 @@ module.exports = (api) => {
   api.setPost('/electrum/coins/activate', async(req, res, next) => {
     try {
       const { chainTicker, launchConfig } = req.body
+      if (typeof chainTicker !== "string" || !/^[0-9a-z._-]{1,64}$/i.test(chainTicker)) {
+        throw new Error("Invalid Electrum coin ticker");
+      }
       if (!launchConfig || typeof launchConfig !== "object") {
         throw new Error("Missing Electrum launch configuration");
       }
       const { customServers = [], tags = [], txFee } = launchConfig
 
       if (customServers.length > 0) {
-        validateElectrumServerList(customServers, {
+        const validatedServers = validateElectrumServerList(customServers, {
           allowTcp: api.appConfig.general.electrum.allowInsecureTcp === true,
         });
-        const confirmation = await dialog.showMessageBox({
-          type: "warning",
+        if (
+          api.nativeAuthorization == null ||
+          typeof api.nativeAuthorization.authorize !== "function"
+        ) {
+          throw new Error("Native authorization is unavailable; custom servers were not activated");
+        }
+        const authorization = await api.nativeAuthorization.authorize({
+          scope: AUTHORIZATION_SCOPES.SECURITY_DECISION,
+          actionId: "/electrum/coins/activate:custom-servers",
           title: "Use Custom Electrum Servers?",
           message: `Use caller-supplied Electrum servers for ${chainTicker}? These servers can observe wallet addresses and provide untrusted chain data.`,
-          buttons: ["Cancel", "Use Servers"],
-          defaultId: 0,
-          cancelId: 0,
+          detail: `Validated server endpoints:\n\n${JSON.stringify(validatedServers, null, 2)}`,
+          confirmLabel: "Use Servers",
         });
-        if (confirmation.response !== 1) throw new Error("Custom Electrum server activation cancelled");
+        if (!authorization || authorization.status !== "approved") {
+          throw new Error(
+            authorization && typeof authorization.message === "string"
+              ? authorization.message
+              : "Custom Electrum server activation cancelled"
+          );
+        }
       }
 
       const result = await api.addElectrumCoin(chainTicker, customServers, tags, txFee);

@@ -96,6 +96,9 @@ module.exports = (api) => {
     );
 
     try {
+      if (typeof api.assertProtectedActionExecutionActive === "function") {
+        api.assertProtectedActionExecutionActive();
+      }
       const response = await signer.sendTransaction(transaction);
 
       try {

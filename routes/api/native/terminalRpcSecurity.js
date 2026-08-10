@@ -208,7 +208,7 @@ const SECRET_PARAMETER_INDEXES = new Map([
   ["zcrawreceive", new Set([0])],
 ]);
 
-const SECRET_PROPERTY = /(?:pass(?:word|phrase)?|private|privkey|secret|spending|viewing|walletseed|mnemonic|rootkey|(?:^|_)(?:salt|seed|evk|ivk|ssk)(?:$|_))/i;
+const SECRET_PROPERTY = /(?:pass(?:word|phrase)?|private|privkey|secret|spending|viewing|walletseed|mnemonic|rootkey|wif|xprv|api.?key|auth.?key|(?:^|_)(?:salt|seed|evk|ivk|ssk)(?:$|_))/i;
 const FUTURE_SENSITIVE_RESULT_METHOD = /(?:decrypt|paymentdisclosure|rawkeygen|rawreceive)|^(?:convert|dump|export|get|reveal|z_export|z_get).*(?:passphrase|priv(?:ate)?key|secretkey|spendingkey|viewingkey|walletseed|mnemonic|seed)$/i;
 const REDACTED_VALUE = "[REDACTED: secret parameter]";
 

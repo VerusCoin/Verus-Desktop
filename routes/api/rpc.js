@@ -1,5 +1,6 @@
 const fs = require('fs-extra');
 const axios = require('axios')
+const { normalizeRpcPort, readRpcPort } = require('./utils/rpcPort');
 
 const RPC_CONF_UPDATE_TIMEOUT = 300000
 
@@ -12,11 +13,11 @@ module.exports = (api) => {
 
       if (fs.existsSync(_confLocation)) {
         const _rpcConf = fs.readFileSync(_confLocation, 'utf8');
-        let _port = api.assetChainPorts[chain];
+        let _port = normalizeRpcPort(api.assetChainPorts[chain]);
 
         // any coind
         if (api.nativeCoindList[chain.toLowerCase()]) {
-          _port = api.nativeCoindList[chain.toLowerCase()].port;
+          _port = normalizeRpcPort(api.nativeCoindList[chain.toLowerCase()].port);
         }
 
         if (_rpcConf.length) {
@@ -37,6 +38,9 @@ module.exports = (api) => {
               (_match = _rpcConf.match(/rpcpassword=\s*(.*)/))) {
             parsedRpcConfig.pass = _match[1];
           }
+
+          const configuredRpcPort = readRpcPort(_rpcConf);
+          if (configuredRpcPort.found) parsedRpcConfig.port = configuredRpcPort.port;
 
           if (api.nativeCoindList[chain.toLowerCase()]) {
             api.rpcConf[chain] = parsedRpcConfig;
@@ -104,6 +108,17 @@ module.exports = (api) => {
             api.rpcConf[_chain].updateTimeoutId = confUpdateId
           }
           rpcTarget = api.rpcConf[_chain];
+          if (rpcTarget) {
+            const normalizedPort = normalizeRpcPort(rpcTarget.port);
+            if (normalizedPort == null) {
+              resolveResponse(JSON.stringify({
+                result: "error",
+                error: { code: 400, message: "Daemon RPC target has an invalid port." },
+              }));
+              return;
+            }
+            rpcTarget = { ...rpcTarget, port: normalizedPort };
+          }
         }
   
         let _body = {

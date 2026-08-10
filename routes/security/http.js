@@ -1,10 +1,15 @@
 const net = require("net");
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
-const DEV_ORIGINS = new Set([
+const DEVELOPMENT_ORIGINS = Object.freeze([
   "http://localhost:3000",
   "http://127.0.0.1:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3001",
+  "http://localhost:3003",
+  "http://127.0.0.1:3003",
 ]);
+const DEV_ORIGINS = new Set(DEVELOPMENT_ORIGINS);
 
 const parseHostHeader = (hostHeader) => {
   if (typeof hostHeader !== "string" || hostHeader.length === 0) return null;
@@ -79,6 +84,7 @@ const isLoopbackAddress = (address) => {
 };
 
 module.exports = {
+  DEVELOPMENT_ORIGINS,
   createDevCorsMiddleware,
   createHostValidationMiddleware,
   isAllowedHostHeader,

@@ -152,8 +152,20 @@ const DENIED_STARTUP_OPTION_NAMES = new Set([
   ...DESKTOP_MANAGED_STARTUP_OPTION_NAMES,
 ]);
 const MATCHING_CHAIN_OPTION_NAMES = new Set(["ac_name", "chain"]);
+// These boolean options can make a daemon create blocks or transactions without
+// a later explicit send RPC. allowdelayednotarizations is inverted: setting it
+// false permits earlier automatic notarization submissions.
+const CHAIN_WRITING_STARTUP_OPTION_VALUES = new Map([
+  ["gen", true],
+  ["mint", true],
+  ["notary", true],
+  ["migration", true],
+  ["alwayssubmitnotarizations", true],
+  ["allowdelayednotarizations", false],
+]);
 const MAX_STARTUP_OPTIONS = 256;
 const MAX_STARTUP_OPTIONS_BYTES = 12 * 1024;
+const MAX_DAEMON_CONFIG_BYTES = 1024 * 1024;
 
 const isValidChainTicker = (value) =>
   typeof value === "string" && CHAIN_TICKER.test(value);
@@ -214,6 +226,138 @@ const startupOptionNameMatches = (name, expectedName) => {
   }
 
   return false;
+};
+
+// Match the daemon's GetBoolArg behavior: a missing/empty value is true and a
+// value is true when its initial C-style decimal integer is non-zero.
+const parseBitcoinBooleanValue = (value) => {
+  if (value === undefined || value === "") return true;
+
+  const match = String(value).match(/^[\t\v\f ]*[+-]?(\d+)/);
+  if (match == null) return false;
+
+  return /[1-9]/.test(match[1]);
+};
+
+const resolveBitcoinBooleanStartupOption = (settings, optionName) => {
+  // ParseParameters gives an explicitly specified positive setting precedence
+  // over -nofoo, while -nofoo=0 inverts to -foo=1. The bundled daemons apply
+  // this transformation once, so unknown repeated aliases such as -nonogen do
+  // not enable -gen.
+  if (settings.has(optionName)) {
+    return parseBitcoinBooleanValue(settings.get(optionName));
+  }
+
+  const negativeName = `no${optionName}`;
+  if (settings.has(negativeName)) {
+    return !parseBitcoinBooleanValue(settings.get(negativeName));
+  }
+
+  return null;
+};
+
+const startupOptionsEnableChainWriting = (options) => {
+  if (!Array.isArray(options)) return false;
+
+  const settings = new Map();
+  for (const option of options) {
+    const parsed = parseStartupOption(option);
+    if (parsed != null) settings.set(parsed.name, parsed.value);
+  }
+
+  return Array.from(CHAIN_WRITING_STARTUP_OPTION_VALUES).some(
+    ([optionName, enablingValue]) =>
+      resolveBitcoinBooleanStartupOption(settings, optionName) === enablingValue
+  );
+};
+
+const parseDaemonConfiguration = (configurationText) => {
+  if (typeof configurationText !== "string") {
+    throw new TypeError("Daemon configuration must be text");
+  }
+  if (Buffer.byteLength(configurationText, "utf8") > MAX_DAEMON_CONFIG_BYTES) {
+    throw new Error("Daemon configuration is too large to inspect safely");
+  }
+
+  const settings = new Map();
+  let indeterminate = false;
+  const lines = configurationText.replace(/^\ufeff/, "").split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || line.startsWith(";")) continue;
+    if (line.startsWith("[") && line.endsWith("]")) continue;
+
+    const separatorIndex = line.indexOf("=");
+    const rawName = (separatorIndex === -1 ? line : line.slice(0, separatorIndex)).trim();
+    const value = separatorIndex === -1 ? undefined : line.slice(separatorIndex + 1).trim();
+    const name = rawName.replace(/^-+/, "").toLowerCase();
+
+    if (!/^[0-9a-z_.-]+$/.test(name)) {
+      indeterminate = true;
+      continue;
+    }
+    // An included configuration can carry any of the chain-writing settings.
+    // We deliberately classify it as indeterminate instead of pretending that
+    // inspecting only the parent file is complete.
+    if (name === "includeconf") indeterminate = true;
+    settings.set(name, value);
+  }
+
+  return { settings, indeterminate };
+};
+
+const settingsFromStartupOptions = (options) => {
+  const settings = new Map();
+  if (!Array.isArray(options)) return settings;
+  for (const option of options) {
+    const parsed = parseStartupOption(option);
+    if (parsed != null) settings.set(parsed.name, parsed.value);
+  }
+  return settings;
+};
+
+const settingsEnableChainWriting = (settings) =>
+  Array.from(CHAIN_WRITING_STARTUP_OPTION_VALUES).some(
+    ([optionName, enablingValue]) =>
+      resolveBitcoinBooleanStartupOption(settings, optionName) === enablingValue
+  );
+
+const daemonConfigurationEnablesChainWriting = (configurationText) => {
+  const parsed = parseDaemonConfiguration(configurationText);
+  return parsed.indeterminate || settingsEnableChainWriting(parsed.settings);
+};
+
+const daemonConfigurationSecurityDescriptor = (configurationText) => {
+  const parsed = parseDaemonConfiguration(configurationText);
+  const values = {};
+  for (const [optionName] of CHAIN_WRITING_STARTUP_OPTION_VALUES) {
+    for (const candidate of [optionName, `no${optionName}`]) {
+      if (parsed.settings.has(candidate)) values[candidate] = parsed.settings.get(candidate);
+    }
+  }
+  if (parsed.settings.has("includeconf")) {
+    values.includeconf = parsed.settings.get("includeconf");
+  }
+  return JSON.stringify({ indeterminate: parsed.indeterminate, values });
+};
+
+const effectiveStartupEnablesChainWriting = (startupOptions, configurationText = "") => {
+  const commandLineSettings = settingsFromStartupOptions(startupOptions);
+  const parsedConfig = parseDaemonConfiguration(configurationText);
+
+  if (parsedConfig.indeterminate) return true;
+  return Array.from(CHAIN_WRITING_STARTUP_OPTION_VALUES).some(
+    ([optionName, enablingValue]) => {
+      const commandLineValue = resolveBitcoinBooleanStartupOption(
+        commandLineSettings,
+        optionName
+      );
+      const effectiveValue = commandLineValue == null
+        ? resolveBitcoinBooleanStartupOption(parsedConfig.settings, optionName)
+        : commandLineValue;
+      return effectiveValue === enablingValue;
+    }
+  );
 };
 
 const isDeniedStartupOptionName = (name) =>
@@ -333,6 +477,11 @@ const isSafeWalletImportPath = (filename) =>
   (path.posix.isAbsolute(filename) || path.win32.isAbsolute(filename));
 
 module.exports = {
+  MAX_DAEMON_CONFIG_BYTES,
+  daemonConfigurationEnablesChainWriting,
+  daemonConfigurationSecurityDescriptor,
+  effectiveStartupEnablesChainWriting,
+  hasChainWritingStartupOption: startupOptionsEnableChainWriting,
   hasStartupOption,
   isAllowedStartupOption,
   isAllowedRpcMethod,
@@ -340,6 +489,7 @@ module.exports = {
   isSafeRelativeDirectory,
   isSafeWalletFilename,
   isValidChainTicker,
+  startupOptionsEnableChainWriting,
   validateLaunchConfig,
   validateStartupOptions,
 };

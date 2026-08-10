@@ -98,8 +98,11 @@ api.erc20 = {
 api.setconf = require('../private/setconf.js');
 api.nativeCoind = require('./nativeCoind.js');
 api.nativeCoindList = {};
-api.assetChainPorts = require('./ports.js');
-api.assetChainPortsDefault = require('./ports.js');
+const defaultAssetChainPorts = require('./ports.js');
+// Runtime-discovered/custom ports must not mutate the defaults through
+// Node's shared require cache.
+api.assetChainPorts = { ...defaultAssetChainPorts };
+api.assetChainPortsDefault = Object.freeze({ ...defaultAssetChainPorts });
 api._appConfig = require('./appConfig.js');
 api.chainParams = require('./chainParams');
 

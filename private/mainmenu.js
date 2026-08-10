@@ -5,7 +5,8 @@ const {
   pathsAgama,
   pathsDaemons,
 } = require('../routes/api/pathsUtil');
-const { promptUpdate, generateDiagnosticPacket } = require('../routes/api');
+const api = require('../routes/api');
+const { promptUpdate, generateDiagnosticPacket } = api;
 const { VERUS_DISCORD, VERUS_WIKI } = require('../routes/api/utils/constants/urls')
 
 const template = [
@@ -52,14 +53,14 @@ const template = [
             focusedWindow.reload();
         }
       },
-      {
+      ...(api.isDevMode === true ? [{
         label: 'Toggle Developer Tools',
         accelerator: process.platform === 'darwin' ? 'Alt+Command+I' : 'Ctrl+Shift+I',
         click (item, focusedWindow) {
           if (focusedWindow)
             focusedWindow.webContents.toggleDevTools();
         }
-      },
+      }] : []),
       {
         type: 'separator'
       },

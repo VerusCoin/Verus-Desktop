@@ -1,6 +1,7 @@
 const coinSelect = require('coinselect');
 const { transaction } = require('agama-wallet-lib/src/transaction-builder');
 const { fromSats, toSats } = require('agama-wallet-lib/src/utils');
+const { toPublicPreflightResult } = require('./security');
 
 // TODO: error handling, input vars check
 
@@ -100,12 +101,7 @@ module.exports = (api) => {
         ? Number(lumpFee)
         : api.electrumServers[chainTicker.toLowerCase()].txfee;
     let value = toSats(Number(amount));
-    let wif
     let fromAddress = customFromAddress ? customFromAddress : api.electrumKeys[chainTicker.toLowerCase()].pub
-
-    if (customWif) wif = customWif
-    if (votingTx) wif = api.elections.priv
-    else wif = api.electrumKeys[chainTicker.toLowerCase()].priv
 
     if (feePerByte) {
       fee = 0;
@@ -486,6 +482,7 @@ module.exports = (api) => {
                       value,
                       fee,
                       totalInterest != null && totalInterest < 0 ? 0 : totalInterest,
+                      undefined,
                       feePerByte
                     )
                   );
@@ -502,6 +499,14 @@ module.exports = (api) => {
                     );
                   } else {
                     if (!offlineTx) {
+                      let wif
+
+                      // Preserve the send path's existing key-selection semantics,
+                      // but do not read any private key during a no-signature
+                      // public preflight.
+                      if (customWif) wif = customWif
+                      if (votingTx) wif = api.elections.priv
+                      else wif = api.electrumKeys[chainTicker.toLowerCase()].priv
 
                       _rawtx = transaction(
                         toAddress,
@@ -588,6 +593,9 @@ module.exports = (api) => {
         const chainTickerUc = api.validateChainTicker(chainTicker);
        
         const ecl = await api.ecl(chainTickerUc);
+        if (typeof api.assertProtectedActionExecutionActive === "function") {
+          api.assertProtectedActionExecutionActive();
+        }
         let resObj = ecl.blockchainTransactionBroadcast(preflightRes.rawTx);
 
         return resObj;
@@ -670,16 +678,12 @@ module.exports = (api) => {
       verify,
       lumpFee,
       feePerByte,
-      noSigature,
-      offlineTx,
-      unsigned,
       customUtxos,
-      votingTx,
-      opreturn,
-      customWif,
       customFromAddress
     } = req.body;
 
+    // This route supplies confirmation data only. Transaction signing and raw
+    // transaction construction are reserved for /electrum/sendtx.
     api.electrum.txPreflight(
         chainTicker,
         toAddress,
@@ -687,20 +691,20 @@ module.exports = (api) => {
         verify,
         lumpFee,
         feePerByte,
-        noSigature,
-        offlineTx,
-        unsigned,
+        true,
+        false,
+        false,
         customUtxos,
-        votingTx,
-        opreturn,
-        customWif,
+        false,
+        undefined,
+        undefined,
         customFromAddress
       )
       .then(preflightObj => {
         res.send(
           JSON.stringify({
             msg: "success",
-            result: preflightObj
+            result: toPublicPreflightResult(preflightObj)
           })
         );
       })
