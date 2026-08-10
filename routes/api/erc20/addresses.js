@@ -1,4 +1,5 @@
 const { ethers } = require("ethers");
+const { executeSensitiveReveal } = require("../sensitiveDataApproval");
 
 module.exports = (api) => { 
   api.erc20.get_address = () => {
@@ -48,18 +49,33 @@ module.exports = (api) => {
     })
   });
 
-  api.setPost('/erc20/get_privkey', (req, res, next) => {
-    if (api.erc20.wallet != null) {
-      res.send(JSON.stringify({
-        msg: 'success',
-        result: api.erc20.wallet.signer.signingKey.privateKey,
-      }));  
-    } else {
-      res.send(JSON.stringify({
+  api.setPost('/erc20/get_privkey', async (req, res, next) => {
+    if (api.erc20.wallet == null) {
+      return res.send(JSON.stringify({
         msg: 'error',
         result: `No ETH privkey found`
-      }));  
+      }));
     }
+
+    const expectedAddress = api.erc20.wallet.address;
+    const retObj = await executeSensitiveReveal(
+      api,
+      req,
+      {
+        kind: "private-key",
+        source: "erc20",
+        chainTicker: req.body.chainTicker,
+        address: expectedAddress,
+      },
+      async () => {
+        if (api.erc20.wallet == null || api.erc20.wallet.address !== expectedAddress) {
+          throw new Error("The approved ERC-20 wallet changed");
+        }
+        return api.erc20.wallet.signer.signingKey.privateKey;
+      }
+    );
+
+    res.send(JSON.stringify(retObj));
   }, true);
 
   return api;

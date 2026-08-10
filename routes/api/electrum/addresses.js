@@ -1,3 +1,5 @@
+const { executeSensitiveReveal } = require("../sensitiveDataApproval");
+
 module.exports = (api) => {  
   api.electrum.get_addresses = async (coin) => {
     const coinLc = coin.toLowerCase()
@@ -53,21 +55,40 @@ module.exports = (api) => {
     }
   });
 
-  api.setPost('/electrum/get_privkey', (req, res, next) => {
+  api.setPost('/electrum/get_privkey', async (req, res, next) => {
     const coin = req.body.chainTicker;
-    const coinLc = coin.toLowerCase()
+    const coinLc = typeof coin === "string" ? coin.toLowerCase() : "";
+    const keyEntry = api.electrumKeys[coinLc];
 
-    if (api.electrumKeys[coinLc] && api.electrumKeys[coinLc].priv) {
-      res.send(JSON.stringify({
-        msg: 'success',
-        result: api.electrumKeys[coinLc].priv
-      }));  
-    } else {
-      res.send(JSON.stringify({
+    if (!keyEntry) {
+      return res.send(JSON.stringify({
         msg: 'error',
         result: `No privkey found for electrum coin ${coin}`
-      }));  
+      }));
     }
+
+    const expectedAddress = keyEntry.pub || null;
+    const retObj = await executeSensitiveReveal(
+      api,
+      req,
+      {
+        kind: "private-key",
+        source: "electrum",
+        chainTicker: coin,
+        address: expectedAddress,
+      },
+      async (request) => {
+        const currentKey = api.electrumKeys[request.chainTicker.toLowerCase()];
+        if (!currentKey || (currentKey.pub || null) !== expectedAddress) {
+          throw new Error("The approved Electrum wallet changed");
+        }
+        const privateKey = currentKey.priv;
+        if (!privateKey) throw new Error(`No privkey found for electrum coin ${request.chainTicker}`);
+        return privateKey;
+      }
+    );
+
+    res.send(JSON.stringify(retObj));
   }, true);
 
   api.setGet('/electrum/get_addresses', (req, res, next) => {
