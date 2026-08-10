@@ -51,6 +51,7 @@ const appConfig = {
         fiatRates: true,
         fiatCurrency: "USD",
         requirePinToConfirmTx: false,
+        requireNativeAuthForIrreversibleActions: true,
         defaultUserId: "",
         reservedChains: coinObjArray
           .map(coinObj => coinObj.id)
@@ -163,6 +164,11 @@ const appConfig = {
           type: "checkbox",
           displayName: "Periodically check for updates",
           info: "Sets Verus Desktop to periodically check for updates every 24 hours."
+        },
+        requireNativeAuthForIrreversibleActions: {
+          type: "checkbox",
+          displayName: "Verify irreversible actions with the operating system",
+          info: "Ask for a trusted native confirmation before sends, identity changes, signatures, mining/staking activation, and other chain-writing actions. Private-key/seed reveals, wallet import/export, and privileged built-in terminal commands remain protected when this is off."
         },
         encryptApiPost: {
           hidden: true

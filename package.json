@@ -12,8 +12,8 @@
     "dist": "cross-env NODE_ENV=production electron-builder --publish=never  ",
     "dist-win": "cross-env NODE_ENV=production electron-builder --publish=never  --win",
     "test": "mocha",
-    "test:security": "node --test test/security.spec.js test/terminalRpcSecurity.spec.js test/terminalRpcApproval.spec.js test/terminalRpcRoute.spec.js test/sensitiveDataApproval.spec.js test/loginConsentSecurity.spec.js test/bridgekeeperSecurity.spec.js test/dependencyCompatibility.spec.js test/downloadProgress.spec.js",
-    "update-agamalib": "rm -rf node_modules/agama-wallet-lib/ && yarn install",
+    "test:security": "node --test test/security.spec.js test/terminalRpcSecurity.spec.js test/terminalRpcApproval.spec.js test/terminalRpcRoute.spec.js test/sensitiveDataApproval.spec.js test/loginConsentSecurity.spec.js test/bridgekeeperSecurity.spec.js test/dependencyCompatibility.spec.js test/downloadProgress.spec.js test/releaseBuildIntegrity.spec.js test/electrumPreflightSecurity.spec.js test/electrumServerAuthorization.spec.js test/runtimeHardening.spec.js test/csp.spec.js test/nativeAuthorization.spec.js test/irreversibleActionPolicy.spec.js test/protectedActionExecution.spec.js",
+    "update-agamalib": "rm -rf node_modules/agama-wallet-lib/ && yarn install --frozen-lockfile --non-interactive",
     "postinstall": "node scripts/applyBridgekeeperSecurityPatch.js"
   },
   "engines": {

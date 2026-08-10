@@ -3,9 +3,31 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 const {
-  createSensitiveDataApprovalService,
+  createSensitiveDataApprovalService: createRawSensitiveDataApprovalService,
   executeSensitiveReveal,
 } = require("../routes/api/sensitiveDataApproval");
+const {
+  createNativeAuthorizationService,
+} = require("../routes/api/native/nativeAuthorization");
+
+const createSensitiveDataApprovalService = (dependencies) => {
+  if (dependencies.nativeAuthorization != null) {
+    return createRawSensitiveDataApprovalService(dependencies);
+  }
+  const nativeAuthorization = createNativeAuthorizationService({
+    dialog: dependencies.dialog,
+    getParentWindow: dependencies.getParentWindow,
+    createOperationId: dependencies.createOperationId,
+    now: dependencies.now,
+    minPromptIntervalMs: dependencies.minPromptIntervalMs,
+    maxPromptsPerWindow: dependencies.maxPromptsPerWindow,
+    promptWindowMs: dependencies.promptWindowMs,
+  });
+  return createRawSensitiveDataApprovalService({
+    ...dependencies,
+    nativeAuthorization,
+  });
+};
 
 const MAIN_HEADER = Object.freeze({
   builtin: true,
@@ -52,6 +74,42 @@ const capturePostRoute = (api, modulePath, wantedRoute) => {
 };
 
 describe("native sensitive-data approval service", function () {
+  it("uses the shared native coordinator without invoking its legacy prompt path", async function () {
+    let fallbackPrompts = 0;
+    let coordinatedPrompt;
+    let revealCalls = 0;
+    const parentWindow = usableWindow();
+    const service = createSensitiveDataApprovalService({
+      dialog: {
+        showMessageBox: async () => {
+          fallbackPrompts += 1;
+          return { response: 0 };
+        },
+      },
+      getParentWindow: () => parentWindow,
+      nativeAuthorization: {
+        async authorize(prompt) {
+          coordinatedPrompt = prompt;
+          return { status: "approved", operationId: "shared-sensitive-prompt" };
+        },
+      },
+    });
+
+    const outcome = await service.execute(privateKeyRequest(), async () => {
+      revealCalls += 1;
+      return "coordinated-private-key";
+    });
+
+    assert.deepStrictEqual(outcome, {
+      status: "ok",
+      result: "coordinated-private-key",
+    });
+    assert.strictEqual(fallbackPrompts, 0);
+    assert.strictEqual(revealCalls, 1);
+    assert.strictEqual(coordinatedPrompt.scope, "sensitive-data");
+    assert.strictEqual(coordinatedPrompt.actionId, "sensitive-data:private-key:native");
+  });
+
   it("uses a parent-bound, cancel-default dialog and executes one immutable request", async function () {
     const parentWindow = usableWindow();
     const auditEvents = [];
@@ -136,7 +194,7 @@ describe("native sensitive-data approval service", function () {
     assert.deepStrictEqual(await failedDialog.execute(privateKeyRequest(), reveal), {
       status: "error",
       code: "DIALOG_FAILED",
-      message: "Unable to obtain native sensitive-data authorization.",
+      message: "Unable to obtain native authorization.",
     });
 
     const unfocused = createSensitiveDataApprovalService({

@@ -1,6 +1,123 @@
-const { dialog, BrowserWindow } = require('electron');
+const { BrowserWindow } = require('electron');
+const fs = require("fs");
 const path = require('path');
 const { initMessage } = require('../../ipc/ipc');
+const { isDevToolsShortcut } = require('../../security/runtimeMode');
+
+const BUILTIN_PLUGIN_ROOT = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "assets",
+  "plugins",
+  "builtin"
+);
+
+const canonicalBuiltinRoot = (builtinRoot) => {
+  const root = fs.realpathSync(builtinRoot);
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) {
+        throw new Error("Packaged built-in assets must not contain symbolic links");
+      }
+      if (entry.isDirectory()) visit(entryPath);
+      else if (!entry.isFile()) {
+        throw new Error("Packaged built-in assets must contain regular files only");
+      }
+    }
+  };
+  visit(root);
+  return root;
+};
+
+const packagedBuiltinUrl = (
+  pluginIndex,
+  port,
+  builtinRoot = BUILTIN_PLUGIN_ROOT
+) => {
+  if (typeof pluginIndex !== "string" || !pluginIndex) {
+    throw new Error("Packaged built-in entry point is unavailable");
+  }
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("Packaged built-in server port is invalid");
+  }
+
+  const resolvedRoot = canonicalBuiltinRoot(builtinRoot);
+  const resolvedIndex = fs.realpathSync(pluginIndex);
+  const relativeIndex = path.relative(resolvedRoot, resolvedIndex);
+  if (
+    !relativeIndex ||
+    path.isAbsolute(relativeIndex) ||
+    relativeIndex === ".." ||
+    relativeIndex.startsWith(`..${path.sep}`) ||
+    (path.sep !== "\\" && relativeIndex.includes("\\"))
+  ) {
+    throw new Error("Packaged built-in entry point escapes the reviewed plugin directory");
+  }
+
+  const encodedPath = relativeIndex
+    .split(path.sep)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `http://127.0.0.1:${port}/builtin/${encodedPath}`;
+};
+
+const installPackagedNavigationGuard = (
+  webContents,
+  expectedUrl,
+  audit = () => {}
+) => {
+  if (
+    webContents == null ||
+    typeof webContents.on !== "function" ||
+    typeof expectedUrl !== "string" ||
+    !expectedUrl
+  ) {
+    throw new TypeError("A webContents instance and exact packaged URL are required");
+  }
+
+  const blockUnexpectedNavigation = (event, targetUrl) => {
+    if (targetUrl !== expectedUrl) {
+      event.preventDefault();
+      audit();
+    }
+  };
+  webContents.on("will-navigate", blockUnexpectedNavigation);
+  webContents.on("will-redirect", blockUnexpectedNavigation);
+  if (typeof webContents.setWindowOpenHandler === "function") {
+    webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  }
+  webContents.on("new-window", (event) => {
+    event.preventDefault();
+    audit();
+  });
+};
+
+const registerPluginWindow = (
+  windowRegistry,
+  completionRegistry,
+  category,
+  id,
+  pluginWindow,
+  onComplete
+) => {
+  const existingWindows = windowRegistry[category][id];
+  const existingCompletions = completionRegistry[category][id];
+  windowRegistry[category][id] = {
+    ...(existingWindows && typeof existingWindows === "object"
+      ? existingWindows
+      : {}),
+    [pluginWindow.id]: pluginWindow,
+  };
+  completionRegistry[category][id] = {
+    ...(existingCompletions && typeof existingCompletions === "object"
+      ? existingCompletions
+      : {}),
+    [pluginWindow.id]: onComplete,
+  };
+};
 
 module.exports = (api) => {
   api.startPlugin = async (
@@ -33,12 +150,14 @@ module.exports = (api) => {
         webPreferences: {
           allowRunningInsecureContent: false,
           contextIsolation: true,
+          devTools: api.isDevMode === true,
           enableRemoteModule: false,
           nativeWindowOpen: false,
           nodeIntegration: false,
           nodeIntegrationInWorker: false,
           nodeIntegrationInSubFrames: false,
           safeDialogs: true,
+          partition: builtin ? `verus-builtin-${id}` : undefined,
           webSecurity: true,
           webviewTag: false,
           sandbox: builtin ? false : true,
@@ -63,23 +182,14 @@ module.exports = (api) => {
         },
       });
 
-      if (api.pluginWindows[category][id] != null) {
-        api.pluginWindows[category][id] = { [pluginWindow.id]: pluginWindow };
-      } else {
-        api.pluginWindows[category][id] = {
-          ...api.pluginWindows[category][id],
-          [pluginWindow.id]: pluginWindow,
-        };
-      }
-
-      if (api.pluginOnCompletes[category][id] != null) {
-        api.pluginOnCompletes[category][id] = { [pluginWindow.id]: onComplete };
-      } else {
-        api.pluginOnCompletes[category][id] = {
-          ...api.pluginOnCompletes[category][id],
-          [pluginWindow.id]: onComplete,
-        };
-      }
+      registerPluginWindow(
+        api.pluginWindows,
+        api.pluginOnCompletes,
+        category,
+        id,
+        pluginWindow,
+        onComplete
+      );
 
       pluginWindow.webContents.on("did-finish-load", () => {
         setTimeout(() => {
@@ -96,15 +206,17 @@ module.exports = (api) => {
         }, 40);
       });
 
-      pluginWindow.webContents.on("devtools-opened", () => {
-        dialog.showMessageBox(pluginWindow, {
-          type: "warning",
-          title: "Be Careful!",
-          message:
-            "WARNING! You are opening the developer tools menu. ONLY enter commands here if you know exactly what you are doing. If someone told you to copy+paste commands into here, you should probably ignore them, close dev tools, and stay safe.",
-          buttons: ["OK"],
+      if (api.isDevMode !== true) {
+        pluginWindow.webContents.on("devtools-opened", () => {
+          if (!pluginWindow.isDestroyed() && !pluginWindow.webContents.isDestroyed()) {
+            pluginWindow.webContents.closeDevTools();
+          }
+          api.log("Blocked a production plugin DevTools open attempt", "security.devtools");
         });
-      });
+        pluginWindow.webContents.on("before-input-event", (event, input) => {
+          if (isDevToolsShortcut(input)) event.preventDefault();
+        });
+      }
 
       // close app
       pluginWindow.on("close", (event) => {
@@ -117,8 +229,19 @@ module.exports = (api) => {
         pluginWindow.destroy()
       });
 
-      if (api.appConfig.general.main.dev || process.argv.indexOf('devmode') > -1) {
+      if (api.isDevMode === true) {
         await pluginWindow.loadURL(`http://localhost:${plugin.devPort}`);
+      } else if (builtin) {
+        const expectedUrl = packagedBuiltinUrl(
+          plugin.index,
+          api.appConfig.general.main.agamaPort
+        );
+        installPackagedNavigationGuard(
+          pluginWindow.webContents,
+          expectedUrl,
+          () => api.log("Blocked packaged plugin navigation", "security.navigation")
+        );
+        await pluginWindow.loadURL(expectedUrl);
       } else {
         await pluginWindow.loadFile(plugin.index);
       }
@@ -151,3 +274,8 @@ module.exports = (api) => {
 
   return api;
 };
+
+module.exports.registerPluginWindow = registerPluginWindow;
+module.exports.packagedBuiltinUrl = packagedBuiltinUrl;
+module.exports.installPackagedNavigationGuard = installPackagedNavigationGuard;
+module.exports.canonicalBuiltinRoot = canonicalBuiltinRoot;

@@ -381,6 +381,40 @@ const postWebhookWithDeadline = async (
   }
 };
 
+const getWebhookWithDeadline = async (
+  httpClient,
+  url,
+  config,
+  deadlineMs = CALLBACK_TIMEOUT_MS
+) => {
+  let cancelRequest;
+  let requestConfig = { ...config };
+
+  if (typeof AbortController === "function") {
+    const controller = new AbortController();
+    requestConfig.signal = controller.signal;
+    cancelRequest = () => controller.abort();
+  } else if (
+    httpClient &&
+    httpClient.CancelToken &&
+    typeof httpClient.CancelToken.source === "function"
+  ) {
+    const cancellation = httpClient.CancelToken.source();
+    requestConfig.cancelToken = cancellation.token;
+    cancelRequest = () => cancellation.cancel("Login consent callback deadline exceeded");
+  } else {
+    throw new Error("HTTP client does not support cancellable login consent callbacks");
+  }
+
+  const deadline = setTimeout(cancelRequest, deadlineMs);
+
+  try {
+    return await httpClient.get(url, requestConfig);
+  } finally {
+    clearTimeout(deadline);
+  }
+};
+
 const snapshotRequestRedirects = (request) => {
   const redirects = request && request.challenge && request.challenge.redirect_uris;
   if (redirects == null) return Object.freeze([]);
@@ -428,6 +462,7 @@ module.exports = {
   bindRedirectToRequest,
   createPinnedLookup,
   createWebhookRequestConfig,
+  getWebhookWithDeadline,
   isLocalHostname,
   isLoopbackHostname,
   isPublicIpAddress,

@@ -161,7 +161,14 @@ describe("terminal RPC policy", function () {
         "raw-transaction-hex",
         [{ txid: "abc", vout: 0 }],
         ["L-private-key"],
-        { metadata: { walletPassphrase: "do-not-display", amount: 12 } },
+        {
+          metadata: {
+            walletPassphrase: "do-not-display",
+            customWif: "custom-wif-do-not-display",
+            apiKey: "api-key-do-not-display",
+            amount: 12,
+          },
+        },
       ],
     });
 
@@ -169,13 +176,23 @@ describe("terminal RPC policy", function () {
       "raw-transaction-hex",
       [{ txid: "abc", vout: 0 }],
       REDACTED_VALUE,
-      { metadata: { walletPassphrase: REDACTED_VALUE, amount: 12 } },
+      {
+        metadata: {
+          walletPassphrase: REDACTED_VALUE,
+          customWif: REDACTED_VALUE,
+          apiKey: REDACTED_VALUE,
+          amount: 12,
+        },
+      },
     ]);
 
     const displayed = formatTerminalRpcRequest(request);
     assert.match(displayed, /raw-transaction-hex/);
     assert.match(displayed, /"amount": 12/);
-    assert.doesNotMatch(displayed, /L-private-key|do-not-display/);
+    assert.doesNotMatch(
+      displayed,
+      /L-private-key|do-not-display|custom-wif-do-not-display|api-key-do-not-display/
+    );
 
     const mergeRequest = createTerminalRpcRequest({
       chainTicker: "VRSC",

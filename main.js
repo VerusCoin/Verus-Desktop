@@ -4,6 +4,12 @@ const {
 } = require('electron');
 const { userAgreesToTerms } = require('./routes/children/userAgreement/window');
 const app = electron.app;
+const {
+  hardenPackagedDebugging,
+  isDevToolsShortcut,
+  resolveDevelopmentMode,
+} = require("./routes/security/runtimeMode");
+hardenPackagedDebugging(app, require("inspector"));
 const hasLock = app.requestSingleInstanceLock()
 
 if (!hasLock) {
@@ -23,26 +29,44 @@ if (!hasLock) {
   const express = require("express");
   const bodyParser = require("body-parser");
   const {
+    DEVELOPMENT_ORIGINS,
     createDevCorsMiddleware,
     createHostValidationMiddleware,
     isLoopbackAddress,
     isAllowedSocketOrigin,
     requireJsonPost,
   } = require("./routes/security/http");
+  const {
+    createContentSecurityPolicyMiddleware,
+  } = require("./routes/security/csp");
   const { formatBytes } = require("agama-wallet-lib/src/utils");
   const { dialog } = require("electron");
   const { createHash } = require("crypto");
+  const { normalizeRpcPort } = require("./routes/api/utils/rpcPort");
   const {
     createTerminalRpcApprovalService,
   } = require("./routes/api/native/terminalRpcApproval");
   const {
     createSensitiveDataApprovalService,
   } = require("./routes/api/sensitiveDataApproval");
+  const {
+    createNativeAuthorizationService,
+    isInteractiveWindow,
+  } = require("./routes/api/native/nativeAuthorization");
   require("@electron/remote/main").initialize();
 
   global.USB_HOME_DIR = path.resolve(__dirname, "./usb_home");
   global.HOME = os.platform() === "win32" ? process.env.APPDATA : process.env.HOME;
 
+  // Config loading itself validates the persisted dev flag. Establish the
+  // command-line/package decision first so an unpackaged `devmode` launch can
+  // migrate an older config containing dev:true, while a packaged app can
+  // never use that persisted value to enable development behavior.
+  api.isDevMode = resolveDevelopmentMode({
+    isPackaged: app.isPackaged,
+    configDev: false,
+    argv: process.argv,
+  });
   api.construct();
 
   const openurlhandler = require("./routes/deeplink/openurlhandler");
@@ -56,7 +80,12 @@ if (!hasLock) {
 
   //TODO: add more things here
   const { appConfig } = api;
-  const isDevMode = appConfig.general.main.dev || process.argv.indexOf("devmode") > -1;
+  const isDevMode = resolveDevelopmentMode({
+    isPackaged: app.isPackaged,
+    configDev: appConfig.general.main.dev,
+    argv: process.argv,
+  });
+  api.isDevMode = isDevMode;
 
   const appBasicInfo = {
     name: "Verus Desktop Testnet",
@@ -100,9 +129,7 @@ if (!hasLock) {
   api.log(`os_release: ${os.release()}`, "init");
   api.log(`os_type: ${os.type()}`, "init");
   api.log(
-    `app started in ${
-      appConfig.general.main.dev || process.argv.indexOf("devmode") > -1 ? "dev mode" : " user mode"
-    }`,
+    `app started in ${isDevMode ? "dev mode" : "user mode"}`,
     "init"
   );
 
@@ -132,7 +159,7 @@ if (!hasLock) {
   });
 
   // silent errors
-  if (!appConfig.general.main.dev && !process.argv.indexOf("devmode") > -1) {
+  if (!isDevMode) {
     process.on("uncaughtException", (err) => {
       api.log(`${new Date().toUTCString()} uncaughtException: ${err.message}`, "exception");
       api.log(err.stack, "exception");
@@ -144,7 +171,33 @@ if (!hasLock) {
   });
 
   const guipath = path.join(__dirname, "/gui");
+  const builtinPluginPath = path.join(__dirname, "assets", "plugins", "builtin");
+  if (!isDevMode) {
+    require("./routes/api/plugin/start").canonicalBuiltinRoot(builtinPluginPath);
+  }
+  guiapp.use(
+    "/gui",
+    createContentSecurityPolicyMiddleware(appConfig.general.main.agamaPort, !isDevMode)
+  );
   guiapp.use("/gui", express.static(guipath));
+  // Packaged built-ins share the authenticated loopback backend origin.
+  // Loading them from file:// gives them an opaque `null` origin, which
+  // Chromium blocks from calling the API while webSecurity is enabled.
+  guiapp.use(
+    "/builtin",
+    createContentSecurityPolicyMiddleware(appConfig.general.main.agamaPort, !isDevMode),
+    (req, res, next) => {
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "no-store");
+      next();
+    },
+    express.static(builtinPluginPath, {
+      dotfiles: "deny",
+      fallthrough: false,
+      index: false,
+      redirect: false,
+    })
+  );
   guiapp.use("/api", requireJsonPost, bodyParser.json({ limit: "10mb" }), api);
 
   const server = require("http").createServer(guiapp);
@@ -160,7 +213,7 @@ if (!hasLock) {
     ...(isDevMode
       ? {
         cors: {
-          origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+          origin: DEVELOPMENT_ORIGINS,
           methods: ["GET", "POST"],
           credentials: true,
         },
@@ -177,16 +230,28 @@ if (!hasLock) {
   let closeAppAfterLoading = false;
   let forceQuitApp = false;
 
+  const enforceDevToolsPolicy = (window) => {
+    if (isDevMode || !window || !window.webContents) return;
+    window.webContents.on("devtools-opened", () => {
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.closeDevTools();
+      }
+      api.log("Blocked a production DevTools open attempt", "security.devtools");
+    });
+    window.webContents.on("before-input-event", (event, input) => {
+      if (isDevToolsShortcut(input)) event.preventDefault();
+    });
+  };
+
   const captureTerminalRpcTarget = (request) => {
     if (!api.rpcConf[request.chainTicker] && typeof api.getConf === "function") {
       api.getConf(request.chainTicker);
     }
     const rpcConfig = api.rpcConf[request.chainTicker];
+    const rpcPort = rpcConfig && normalizeRpcPort(rpcConfig.port);
     if (
       !rpcConfig ||
-      !Number.isInteger(rpcConfig.port) ||
-      rpcConfig.port < 1 ||
-      rpcConfig.port > 65535 ||
+      rpcPort == null ||
       typeof rpcConfig.user !== "string" ||
       typeof rpcConfig.pass !== "string"
     ) {
@@ -196,7 +261,7 @@ if (!hasLock) {
     for (const value of [
       request.chainTicker,
       api.confFileIndex[request.chainTicker],
-      rpcConfig && rpcConfig.port,
+      rpcPort,
       rpcConfig && rpcConfig.user,
       rpcConfig && rpcConfig.pass,
     ]) {
@@ -207,16 +272,47 @@ if (!hasLock) {
       fingerprint: fingerprint.digest("hex"),
       rpcTarget: Object.freeze({
         chain: request.chainTicker,
-        port: rpcConfig.port,
+        port: rpcPort,
         user: rpcConfig.user,
         pass: rpcConfig.pass,
       }),
     });
   };
 
+  const getNativeAuthorizationParent = (request) => {
+    const callerAppId = request && request.callerAppId;
+    if (callerAppId == null || callerAppId === "VERUS_DESKTOP_MAIN") {
+      return mainWindow;
+    }
+    if (callerAppId !== "VERUS_LOGIN_CONSENT_UI") return null;
+
+    const registeredWindows =
+      api.pluginWindows && api.pluginWindows.builtin &&
+      api.pluginWindows.builtin.VERUS_LOGIN_CONSENT_UI;
+    if (registeredWindows == null || typeof registeredWindows !== "object") return null;
+    const focusedWindows = Object.values(registeredWindows).filter(isInteractiveWindow);
+    return focusedWindows.length === 1 ? focusedWindows[0] : null;
+  };
+
+  api.nativeAuthorization = createNativeAuthorizationService({
+    dialog,
+    getParentWindow: getNativeAuthorizationParent,
+    isIrreversibleAuthorizationEnabled: () =>
+      typeof api.isIrreversibleAuthorizationEnabled === "function"
+        ? api.isIrreversibleAuthorizationEnabled()
+        : true,
+    audit: ({ operationId, scope, actionId, outcome }) => {
+      api.log(
+        `operation: ${operationId || "none"}, scope: ${scope}, action: ${actionId}, outcome: ${outcome}`,
+        "native.authorization"
+      );
+    },
+  });
+
   api.terminalRpcApproval = createTerminalRpcApprovalService({
     dialog,
     getParentWindow: () => mainWindow,
+    nativeAuthorization: api.nativeAuthorization,
     executeRpc: (request, executionTarget) => api.native.callDaemon(
       request.chainTicker,
       request.method,
@@ -238,6 +334,7 @@ if (!hasLock) {
   api.sensitiveDataApproval = createSensitiveDataApprovalService({
     dialog,
     getParentWindow: () => mainWindow,
+    nativeAuthorization: api.nativeAuthorization,
     captureExecutionTarget: (request) => request.source === "native"
       ? captureTerminalRpcTarget(request)
       : null,
@@ -287,6 +384,7 @@ if (!hasLock) {
       webPreferences: {
         allowRunningInsecureContent: false,
         contextIsolation: true,
+        devTools: isDevMode,
         enableRemoteModule: false,
         nativeWindowOpen: false,
         nodeIntegration: false,
@@ -302,10 +400,12 @@ if (!hasLock) {
     appCloseWindow.setResizable(false);
 
     appCloseWindow.loadURL(
-      appConfig.general.main.dev || process.argv.indexOf("devmode") > -1
+      isDevMode
         ? `http://127.0.0.1:${appConfig.general.main.agamaPort}/gui/startup/app-closing.html`
         : `file://${__dirname}/gui/startup/app-closing.html`
     );
+
+    enforceDevToolsPolicy(appCloseWindow);
 
     appCloseWindow.webContents.on("did-finish-load", () => {
       setTimeout(() => {
@@ -313,15 +413,6 @@ if (!hasLock) {
       }, 40);
     });
 
-    appCloseWindow.webContents.on("devtools-opened", () => {
-      dialog.showMessageBox(appCloseWindow, {
-        type: "warning",
-        title: "Be Careful!",
-        message:
-          "WARNING! You are opening the developer tools menu. ONLY enter commands here if you know exactly what you are doing.\n\nNEVER copy+paste any commands given to you into here. No trustworthy support person will EVER ask you to do that.\n\nANY CODE COPY+PASTED INTO DEV TOOLS CAN CONTROL YOUR FUNDS.",
-        buttons: ["OK"],
-      });
-    });
   }
 
   function appExit() {
@@ -478,6 +569,7 @@ if (!hasLock) {
       webPreferences: {
         allowRunningInsecureContent: false,
         contextIsolation: true,
+        devTools: isDevMode,
         enableRemoteModule: false,
         nativeWindowOpen: false,
         nodeIntegration: false,
@@ -495,10 +587,12 @@ if (!hasLock) {
 
     willQuitApp = true;
     alreadyRunningWindow.loadURL(
-      appConfig.general.main.dev || process.argv.indexOf("devmode") > -1
+      isDevMode
         ? `http://127.0.0.1:${appConfig.general.main.agamaPort}/gui/startup/agama-instance-error.html`
         : `file://${__dirname}/gui/startup/agama-instance-error.html`
     );
+
+    enforceDevToolsPolicy(alreadyRunningWindow);
 
     alreadyRunningWindow.webContents.on("did-finish-load", () => {
       alreadyRunningWindow.show();
@@ -543,6 +637,7 @@ if (!hasLock) {
       webPreferences: {
         allowRunningInsecureContent: false,
         contextIsolation: true,
+        devTools: isDevMode,
         enableRemoteModule: false,
         nativeWindowOpen: false,
         nodeIntegration: false,
@@ -563,15 +658,7 @@ if (!hasLock) {
         : `http://127.0.0.1:${appConfig.general.main.agamaPort}/gui/Verus-Desktop-GUI/react/build/`
     );
 
-    mainWindow.webContents.on("devtools-opened", () => {
-      dialog.showMessageBox(mainWindow, {
-        type: "warning",
-        title: "Be Careful!",
-        message:
-          "WARNING! You are opening the developer tools menu. ONLY enter commands here if you know exactly what you are doing. If someone told you to copy+paste commands into here, you should probably ignore them, close dev tools, and stay safe.",
-        buttons: ["OK"],
-      });
-    });
+    enforceDevToolsPolicy(mainWindow);
 
     mainWindow.webContents.on("did-finish-load", () => {
       setTimeout(() => {

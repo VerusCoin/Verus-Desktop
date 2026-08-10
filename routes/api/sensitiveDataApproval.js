@@ -3,11 +3,9 @@
 const { randomBytes } = require("crypto");
 const { isAvailableWindow } = require("./native/terminalRpcApproval");
 const { escapeInvisibleCharacters } = require("./native/terminalRpcSecurity");
+const { AUTHORIZATION_SCOPES } = require("./native/nativeAuthorization");
 
 const MAIN_APPLICATION_ID = "VERUS_DESKTOP_MAIN";
-const DEFAULT_MIN_PROMPT_INTERVAL_MS = 750;
-const DEFAULT_MAX_PROMPTS_PER_WINDOW = 8;
-const DEFAULT_PROMPT_WINDOW_MS = 60 * 1000;
 const MAX_SECRET_LENGTH = 1024 * 1024;
 
 const SOURCE_POLICY = Object.freeze({
@@ -105,23 +103,19 @@ const formatRequestDetail = (request) => {
  */
 const createSensitiveDataApprovalService = (dependencies = {}) => {
   const {
-    dialog,
     getParentWindow,
+    nativeAuthorization,
     captureExecutionTarget = () => null,
     executionTargetMatches = () => true,
     createOperationId = () => randomBytes(12).toString("hex"),
     audit = () => {},
-    now = () => Date.now(),
-    minPromptIntervalMs = DEFAULT_MIN_PROMPT_INTERVAL_MS,
-    maxPromptsPerWindow = DEFAULT_MAX_PROMPTS_PER_WINDOW,
-    promptWindowMs = DEFAULT_PROMPT_WINDOW_MS,
   } = dependencies;
 
-  if (dialog == null || typeof dialog.showMessageBox !== "function") {
-    throw new TypeError("A dialog dependency is required");
-  }
   if (typeof getParentWindow !== "function") {
     throw new TypeError("getParentWindow must be a function");
+  }
+  if (nativeAuthorization == null || typeof nativeAuthorization.authorize !== "function") {
+    throw new TypeError("The shared nativeAuthorization coordinator is required");
   }
   if (
     typeof captureExecutionTarget !== "function" ||
@@ -131,7 +125,6 @@ const createSensitiveDataApprovalService = (dependencies = {}) => {
   }
 
   let revealActive = false;
-  const promptTimes = [];
 
   const auditSafe = (event) => {
     try {
@@ -140,22 +133,6 @@ const createSensitiveDataApprovalService = (dependencies = {}) => {
       // An audit failure must not disclose a secret or make a completed
       // reveal appear retryable.
     }
-  };
-
-  const checkAndRecordPromptRate = () => {
-    const currentTime = now();
-    while (promptTimes.length && currentTime - promptTimes[0] >= promptWindowMs) {
-      promptTimes.shift();
-    }
-    const lastPrompt = promptTimes[promptTimes.length - 1];
-    if (
-      promptTimes.length >= maxPromptsPerWindow ||
-      (lastPrompt != null && currentTime - lastPrompt < minPromptIntervalMs)
-    ) {
-      return false;
-    }
-    promptTimes.push(currentTime);
-    return true;
   };
 
   const execute = async (rawRequest, reveal) => {
@@ -193,10 +170,6 @@ const createSensitiveDataApprovalService = (dependencies = {}) => {
           "Focus the Verus Desktop window before revealing sensitive data."
         );
       }
-      if (!checkAndRecordPromptRate()) {
-        auditSafe({ operationId, kind: request.kind, source: request.source, outcome: "rate-limited" });
-        return fixedError("RATE_LIMITED", "Too many sensitive-data prompts. Wait and try again.");
-      }
       try {
         executionTarget = captureExecutionTarget(request);
       } catch (error) {
@@ -204,28 +177,37 @@ const createSensitiveDataApprovalService = (dependencies = {}) => {
         return fixedError("TARGET_UNAVAILABLE", "Unable to bind the sensitive-data source.");
       }
 
-      let confirmation;
-      try {
-        confirmation = await dialog.showMessageBox(parentWindow, {
-          type: "warning",
-          title: request.kind === "seed" ? "Authorize Seed Unlock" : "Authorize Private-Key Reveal",
-          message: request.kind === "seed"
-            ? "Verus Desktop is requesting access to this profile's decrypted seed."
-            : "Verus Desktop is requesting a one-time raw private-key reveal.",
-          detail: formatRequestDetail(request),
-          buttons: ["Cancel", request.kind === "seed" ? "Unlock Once" : "Reveal Once"],
-          defaultId: 0,
-          cancelId: 0,
-          noLink: true,
-        });
-      } catch (error) {
-        auditSafe({ operationId, kind: request.kind, source: request.source, outcome: "dialog-error" });
-        return fixedError("DIALOG_FAILED", "Unable to obtain native sensitive-data authorization.");
-      }
+      const prompt = {
+        scope: AUTHORIZATION_SCOPES.SENSITIVE_DATA,
+        actionId: `sensitive-data:${request.kind}:${request.source}`,
+        title: request.kind === "seed" ? "Authorize Seed Unlock" : "Authorize Private-Key Reveal",
+        message: request.kind === "seed"
+          ? "Verus Desktop is requesting access to this profile's decrypted seed."
+          : "Verus Desktop is requesting a one-time raw private-key reveal.",
+        detail: formatRequestDetail(request),
+        confirmLabel: request.kind === "seed" ? "Unlock Once" : "Reveal Once",
+      };
 
-      if (confirmation == null || confirmation.response !== 1) {
+      let authorization;
+      try {
+        authorization = await nativeAuthorization.authorize(prompt);
+      } catch (error) {
+        authorization = null;
+      }
+      if (authorization && authorization.status === "cancelled") {
         auditSafe({ operationId, kind: request.kind, source: request.source, outcome: "cancelled" });
         return { status: "cancelled" };
+      }
+      if (!authorization || authorization.status !== "approved") {
+        auditSafe({ operationId, kind: request.kind, source: request.source, outcome: "authorization-failed" });
+        return fixedError(
+          authorization && typeof authorization.code === "string"
+            ? authorization.code
+            : "AUTHORIZATION_FAILED",
+          authorization && typeof authorization.message === "string"
+            ? authorization.message
+            : "Unable to obtain native sensitive-data authorization."
+        );
       }
       if (getParentWindow() !== parentWindow || !isAvailableWindow(parentWindow)) {
         auditSafe({ operationId, kind: request.kind, source: request.source, outcome: "window-lost" });

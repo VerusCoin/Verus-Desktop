@@ -64,6 +64,30 @@ module.exports = (api) => {
   }
 
   api.native.callDaemon = (coin, cmd, params, options = {}) => {
+    const protectedExecution =
+      typeof api.getProtectedActionExecutionContext === "function"
+        ? api.getProtectedActionExecutionContext()
+        : null;
+    const approvedRpcTarget =
+      protectedExecution && protectedExecution.target &&
+      protectedExecution.target.nativeRpcTarget;
+    if (
+      protectedExecution &&
+      typeof protectedExecution.assertActive === "function"
+    ) {
+      try {
+        protectedExecution.assertActive();
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+    if (
+      options.rpcTarget == null &&
+      approvedRpcTarget != null &&
+      approvedRpcTarget.chain === coin
+    ) {
+      options = { ...options, rpcTarget: approvedRpcTarget };
+    }
     const redactLogs = options != null && options.redactLogs === true;
 
     return new Promise((resolve, reject) => {
@@ -97,6 +121,12 @@ module.exports = (api) => {
 
       setImmediate(async () => {
         try {
+          if (
+            protectedExecution &&
+            typeof protectedExecution.assertActive === "function"
+          ) {
+            protectedExecution.assertActive();
+          }
           const cliResponse = await api.sendToCli(
             _payload,
             {

@@ -7,6 +7,7 @@ const {
   hasStartupOption,
   validateStartupOptions,
 } = require('./native/security.js');
+const { normalizeRpcPort, readRpcPort } = require('./utils/rpcPort.js');
 
 module.exports = (api) => {
   api.isPbaasDaemon = (daemon, coin) => {
@@ -324,71 +325,67 @@ module.exports = (api) => {
     }.conf`;
     api.log(`attempting to read ${confLocation}...`, "native.process");
 
-    if (api.assetChainPorts[coin] != null) {
-      return new Promise(resolve => {
-        api.log(
-          `${coin} port in memory...`,
-          "native.confd"
-        );
-        resolve();
-      });
-    } else {
-      return new Promise((resolve, reject) => {
-        fs.readFile(confLocation, "utf8")
-          .then(confFile => {
-            const customPort = confFile.match(/rpcport=\s*(.*)/);
+    const cachedPort = normalizeRpcPort(api.assetChainPorts[coin]);
+    const defaultPort = normalizeRpcPort(api.assetChainPortsDefault[coin]);
+    const normalizedFallbackPort = normalizeRpcPort(fallbackPort);
+    const rememberPort = (port) => {
+      api.assetChainPorts[coin] = port;
+      if (api.rpcConf[coin]) api.rpcConf[coin].port = port;
+    };
 
-            if (customPort[1]) {
-              api.assetChainPorts[coin] = customPort[1];
-              api.rpcConf[coin].port = customPort[1];
-              api.log(
-                `${coin} port read from conf file and set to ${customPort[1]}...`,
-                "native.confd"
-              );
-              resolve();
-            } else {
-              api.assetChainPorts[coin] = api.assetChainPortsDefault[coin];
-              api.rpcConf[coin].port = api.assetChainPortsDefault[coin];
-              api.log(
-                `${coin} port not found in conf file, using default port ${customPort[1]}...`,
-                "native.confd"
-              );
-              resolve();
-            }
-          })
-          .catch(e => {
+    return new Promise((resolve, reject) => {
+      fs.readFile(confLocation, "utf8")
+        .then(confFile => {
+          const { found: configuredPortFound, port: configuredPort } =
+            readRpcPort(confFile);
+          if (configuredPortFound && configuredPort == null) {
+            const invalidPort = new Error(`Invalid RPC port configured for ${coin}`);
+            invalidPort.code = "INVALID_RPC_PORT";
+            throw invalidPort;
+          }
+          const selectedPort = configuredPort || cachedPort || defaultPort;
+          if (selectedPort == null) {
+            throw new Error(`No valid RPC port is configured for ${coin}`);
+          }
+
+          rememberPort(selectedPort);
+          api.log(
+            configuredPort != null
+              ? `${coin} port read from conf file and set to ${selectedPort}...`
+              : `${coin} port not found in conf file, using port ${selectedPort}...`,
+            "native.confd"
+          );
+          resolve();
+        })
+        .catch(e => {
+          if (e && e.code === "INVALID_RPC_PORT") {
+            reject(e);
+            return;
+          }
+          api.log(
+            `failed to read ${coin} port from conf file, and/or it wasn't found in the default ports list!`,
+            "native.process"
+          );
+
+          const selectedPort = normalizedFallbackPort || cachedPort || defaultPort;
+          if (selectedPort != null) {
+            rememberPort(selectedPort);
             api.log(
-              `failed to read ${coin} port from conf file, and/or it wasn't found in the default ports list!`,
+              normalizedFallbackPort != null
+                ? `fallback port detected, using ${selectedPort}...`
+                : `no fallback port detected, using ${selectedPort}...`,
               "native.process"
             );
-
-            if (api.rpcConf[coin])
-              api.rpcConf[coin].port = api.assetChainPortsDefault[coin];
-
-            if (fallbackPort) {
-              api.log(
-                `fallback port detected, using ${fallbackPort}...`,
-                "native.process"
-              );
-              api.assetChainPorts[coin] = fallbackPort;
-              resolve();
-            } else if (api.assetChainPortsDefault[coin] != null) {
-              api.log(
-                `no fallback port detected, using ${api.assetChainPortsDefault[coin]}...`,
-                "native.process"
-              );
-              api.assetChainPorts[coin] = api.assetChainPortsDefault[coin];
-              resolve();
-            } else {
-              api.log(
-                `no fallback or default port detected! throwing error...`,
-                "native.process"
-              );
-              reject(e);
-            }
-          });
-      });
-    }
+            resolve();
+          } else {
+            api.log(
+              `no fallback or default port detected! throwing error...`,
+              "native.process"
+            );
+            reject(e);
+          }
+        });
+    });
   };
 
   api.checkPort = port => {
