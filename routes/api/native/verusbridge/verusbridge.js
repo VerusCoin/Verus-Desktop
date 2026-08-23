@@ -76,7 +76,11 @@ module.exports = (api) => {
 
       const result = confFile.loadConfFile(chainTicker);
 
-      if (result) resolve(result);
+      if (result) {
+        resolve({
+          ethnode: typeof result.ethnode === "string" ? result.ethnode : "",
+        });
+      }
       else reject(result);
     });
   };

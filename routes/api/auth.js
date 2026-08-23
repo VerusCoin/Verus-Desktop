@@ -2,15 +2,32 @@ const passwdStrength = require('passwd-strength');
 const CryptoJS = require("crypto-js");
 var blake2b = require('blake2b');
 const { randomBytes, timingSafeEqual } = require('crypto');
+const {
+  createApiAuthorizationRequest,
+} = require("./native/irreversibleActionPolicy");
+const {
+  createProtectedActionExecutionService,
+} = require("./native/protectedActionExecution");
 
 const TOKEN_WINDOW_MS = 10 * 60 * 1000;
 const TOKEN_HEX_LENGTH = 128;
+const DEFAULT_PROTECTED_ACTION_TIMEOUT_MS = 11 * 60 * 1000;
 
 const decrypt = (data, key) => CryptoJS.AES.decrypt(data, key).toString(CryptoJS.enc.Utf8);
 const encrypt = (data, key) => CryptoJS.AES.encrypt(data, key).toString()
 
 module.exports = (api) => {
   api.seenTimes = new Map()
+  api.protectedActionExecution = createProtectedActionExecutionService(api);
+  api.getProtectedActionExecutionContext = () =>
+    api.protectedActionExecution.currentExecutionContext();
+  api.assertProtectedActionExecutionActive = () => {
+    const context = api.getProtectedActionExecutionContext();
+    if (context && typeof context.assertActive === "function") {
+      context.assertActive();
+    }
+    return true;
+  };
 
   api.permissionlessPaths = [
     'help',
@@ -68,6 +85,70 @@ module.exports = (api) => {
     api.post(url, async (req, res, next) => {
       res.type('json')
 
+      let executionLease = null;
+      let responseCompleted = false;
+      let executionTimeout = null;
+      const responseLifecycleListeners = [];
+      let resolveResponseCompletion;
+      const responseCompletion = new Promise((resolve) => {
+        resolveResponseCompletion = resolve;
+      });
+      const releaseExecutionLease = () => {
+        if (executionLease != null) {
+          executionLease.release();
+          executionLease = null;
+        }
+      };
+      const completeResponse = () => {
+        if (responseCompleted) return;
+        responseCompleted = true;
+        if (executionTimeout != null) {
+          clearTimeout(executionTimeout);
+          executionTimeout = null;
+        }
+        for (const [event, listener] of responseLifecycleListeners) {
+          if (typeof res.removeListener === "function") {
+            res.removeListener(event, listener);
+          }
+        }
+        releaseExecutionLease();
+        resolveResponseCompletion();
+      };
+      if (typeof res.once === "function") {
+        for (const event of ["finish", "close", "error"]) {
+          const listener = () => completeResponse();
+          res.once(event, listener);
+          responseLifecycleListeners.push([event, listener]);
+        }
+      }
+      const armExecutionTimeout = () => {
+        const configuredTimeout = api.protectedActionResponseTimeoutMs;
+        const timeoutMs = Number.isInteger(configuredTimeout) && configuredTimeout > 0
+          ? configuredTimeout
+          : DEFAULT_PROTECTED_ACTION_TIMEOUT_MS;
+        executionTimeout = setTimeout(() => {
+          if (responseCompleted) return;
+          try {
+            if (!res.headersSent && res.destroyed !== true) {
+              if (typeof res.status === "function") res.status(504);
+              sendWrapped(JSON.stringify({
+                msg: "error",
+                result:
+                  "The protected operation did not complete in time. Its authorization was revoked; verify wallet state before retrying.",
+              }));
+            } else {
+              completeResponse();
+            }
+          } catch (error) {
+            api.log(error, "setPost.timeout");
+            completeResponse();
+          }
+        }, timeoutMs);
+        if (executionTimeout && typeof executionTimeout.unref === "function") {
+          executionTimeout.unref();
+        }
+      };
+
       if (api.appConfig.general.main.livelog) {
         api.writeLog(`POST, url: ${url}, forceEncryption: ${forceEncryption}`, 'api.http.request')
       }
@@ -77,18 +158,23 @@ module.exports = (api) => {
       const builtin = req.body.builtin === 'true' || req.body.builtin === true;
       const shieldKey = builtin ? api.BuiltinSecret : null;
       const sendWrapped = (data) => {
+        if (responseCompleted) return res;
         const encryptResponse =
           requestEncrypted &&
           typeof shieldKey === "string" &&
           shieldKey.length > 0;
 
-        return res.send(
-          JSON.stringify(
-            encryptResponse
-              ? { payload: encrypt(data, shieldKey) }
-              : { payload: data }
-          )
-        );
+        try {
+          return res.send(
+            JSON.stringify(
+              encryptResponse
+                ? { payload: encrypt(data, shieldKey) }
+                : { payload: data }
+            )
+          );
+        } finally {
+          completeResponse();
+        }
       };
 
       try {
@@ -124,8 +210,105 @@ module.exports = (api) => {
             throw new Error("Invalid encrypted API payload");
           }
         }
+
+        let nativeAuthorizationContext = null;
+        let startupSecurityState = null;
+        if (url === "/native/coins/activate" || url === "/native/coins/restart") {
+          if (
+            api.native == null ||
+            typeof api.native.captureStartupSecurityState !== "function"
+          ) {
+            throw new Error("Daemon startup authorization policy is unavailable");
+          }
+          startupSecurityState = url === "/native/coins/activate" &&
+              typeof api.native.captureActivationSecurityState === "function"
+            ? await api.native.captureActivationSecurityState(
+                payload && payload.chainTicker,
+                payload && payload.launchConfig,
+                payload && payload.startupOptions
+              )
+            : api.native.captureStartupSecurityState(
+                payload && payload.chainTicker,
+                payload && payload.launchConfig,
+                payload && payload.startupOptions
+              );
+        }
+        if (responseCompleted) return;
+        const authorizationRequest = createApiAuthorizationRequest(url, payload, {
+          callerAppId: req.body.app_id,
+          callerBuiltin: builtin,
+          currentConfig: api.appConfig,
+          irreversibleAuthorizationEnabled:
+            typeof api.isIrreversibleAuthorizationEnabled === "function"
+              ? api.isIrreversibleAuthorizationEnabled()
+              : undefined,
+          effectiveStartupSecurityState: startupSecurityState,
+          loginConsentSessionAvailable:
+            url === "/native/verusid/login/sign_response" &&
+            req.body.app_id === "VERUS_LOGIN_CONSENT_UI" &&
+            api.loginConsentUi != null &&
+            typeof api.loginConsentUi.hasPendingResponse === "function"
+              ? api.loginConsentUi.hasPendingResponse(payload && payload.response)
+              : undefined,
+        });
+        if (authorizationRequest != null) {
+          executionLease = api.protectedActionExecution.reserveProtected({
+            route: url,
+            payload,
+            startupSecurityState,
+          });
+          if (
+            api.nativeAuthorization == null ||
+            typeof api.nativeAuthorization.authorize !== "function"
+          ) {
+            return sendWrapped(JSON.stringify({
+              msg: "error",
+              result: "Native authorization is unavailable; the protected operation was not executed.",
+            }));
+          }
+
+          const authorization = await api.nativeAuthorization.authorize(authorizationRequest);
+          if (responseCompleted) return;
+          if (
+            authorization == null ||
+            (authorization.status !== "approved" && authorization.status !== "not-required")
+          ) {
+            const result = authorization && authorization.status === "cancelled"
+              ? "Protected operation cancelled."
+              : authorization && typeof authorization.message === "string"
+                ? authorization.message
+                : "Native authorization failed; the protected operation was not executed.";
+            return sendWrapped(JSON.stringify({ msg: "error", result }));
+          }
+          const currentStartupSecurityState = startupSecurityState == null
+            ? null
+            : api.native.captureStartupSecurityState(
+                payload.chainTicker,
+                payload.launchConfig,
+                payload.startupOptions
+              );
+          if (!executionLease.matches(currentStartupSecurityState)) {
+            return sendWrapped(JSON.stringify({
+              msg: "error",
+              result: "The protected wallet target changed while awaiting authorization; the operation was not executed.",
+            }));
+          }
+          nativeAuthorizationContext = Object.freeze({
+            status: authorization.status,
+            scope: authorizationRequest.scope,
+            actionId: authorizationRequest.actionId,
+            ...(typeof authorization.operationId === "string"
+              ? { operationId: authorization.operationId }
+              : {}),
+            ...(typeof authorizationRequest.startupFingerprint === "string"
+              ? { startupFingerprint: authorizationRequest.startupFingerprint }
+              : {}),
+          });
+        } else {
+          executionLease = api.protectedActionExecution.reserveMutation(url);
+        }
         
-        const wrappedSend = async (data) => sendWrapped(data);
+        const wrappedSend = (data) => sendWrapped(data);
         let handlerResponse;
         handlerResponse = new Proxy(res, {
           get(target, property) {
@@ -145,20 +328,45 @@ module.exports = (api) => {
           },
         });
 
-        await handler(
-          {...req, body: payload, api_header: { app_id: req.body.app_id, builtin }},
+        const invokeHandler = () => handler(
+          {
+            ...req,
+            body: payload,
+            api_header: { app_id: req.body.app_id, builtin },
+            native_authorization: nativeAuthorizationContext,
+          },
           handlerResponse,
           next
         );
+        if (
+          executionLease != null &&
+          authorizationRequest != null &&
+          typeof executionLease.run === "function"
+        ) {
+          armExecutionTimeout();
+          await executionLease.run(nativeAuthorizationContext, invokeHandler);
+        } else {
+          if (executionLease != null) armExecutionTimeout();
+          await invokeHandler();
+        }
+        // A number of legacy routes start a promise/callback chain without
+        // returning it. Keep the target lease through the actual response so a
+        // competing logout/activation cannot swap the approved target midway.
+        if (executionLease != null && !responseCompleted) await responseCompletion;
       } catch(e) {  
         api.log('HTTP POST error', 'setPost')
         api.log(e, 'setPost')
 
-        if (res.headersSent) return;
+        if (res.headersSent) {
+          completeResponse();
+          return;
+        }
         return sendWrapped(JSON.stringify({
           msg: "error",
           result: e.message,
         }));
+      } finally {
+        if (responseCompleted) releaseExecutionLease();
       }
     })
   }
@@ -231,7 +439,7 @@ module.exports = (api) => {
     const retObj = {
       msg: 'success',
       result: {
-        devmode: (api.appConfig.general.main.dev || process.argv.indexOf('devmode') > -1),
+        devmode: api.isDevMode === true,
         rpc_api: api.rpcCalls
       },
     };

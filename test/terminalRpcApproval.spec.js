@@ -7,8 +7,30 @@ const path = require("path");
 const { describe, it } = require("node:test");
 const RpcError = require("../routes/api/utils/rpc/rpcError");
 const {
-  createTerminalRpcApprovalService,
+  createTerminalRpcApprovalService: createRawTerminalRpcApprovalService,
 } = require("../routes/api/native/terminalRpcApproval");
+const {
+  createNativeAuthorizationService,
+} = require("../routes/api/native/nativeAuthorization");
+
+const createTerminalRpcApprovalService = (dependencies) => {
+  if (dependencies.nativeAuthorization != null) {
+    return createRawTerminalRpcApprovalService(dependencies);
+  }
+  const nativeAuthorization = createNativeAuthorizationService({
+    dialog: dependencies.dialog,
+    getParentWindow: dependencies.getParentWindow,
+    createOperationId: dependencies.createOperationId,
+    now: dependencies.now,
+    minPromptIntervalMs: dependencies.minPromptIntervalMs,
+    maxPromptsPerWindow: dependencies.maxPromptsPerWindow,
+    promptWindowMs: dependencies.promptWindowMs,
+  });
+  return createRawTerminalRpcApprovalService({
+    ...dependencies,
+    nativeAuthorization,
+  });
+};
 
 const usableWindow = (overrides = {}) => ({
   isDestroyed: () => false,
@@ -34,6 +56,47 @@ const confirmedDaemonError = (code, message) => {
 };
 
 describe("terminal RPC approval service", function () {
+  it("uses the shared native coordinator for privileged commands", async function () {
+    let fallbackPrompts = 0;
+    let coordinatedPrompt;
+    let executionCount = 0;
+    const parentWindow = usableWindow();
+    const service = createTerminalRpcApprovalService({
+      dialog: approvedDialog({
+        showMessageBox: async () => {
+          fallbackPrompts += 1;
+          return { response: 0 };
+        },
+      }),
+      getParentWindow: () => parentWindow,
+      nativeAuthorization: {
+        async authorize(prompt) {
+          coordinatedPrompt = prompt;
+          return { status: "approved", operationId: "shared-terminal-prompt" };
+        },
+      },
+      executeRpc: async () => {
+        executionCount += 1;
+        return { txid: "coordinated" };
+      },
+    });
+
+    const outcome = await service.execute({
+      chainTicker: "VRSC",
+      method: "sendcurrency",
+      params: ["*", [{ address: "RExample", amount: 1 }]],
+    });
+
+    assert.deepStrictEqual(outcome, {
+      status: "ok",
+      result: { txid: "coordinated" },
+    });
+    assert.strictEqual(fallbackPrompts, 0);
+    assert.strictEqual(executionCount, 1);
+    assert.strictEqual(coordinatedPrompt.scope, "terminal-rpc");
+    assert.strictEqual(coordinatedPrompt.actionId, "terminal-rpc:sendcurrency");
+  });
+
   it("shows the exact decoded request in a parent-bound warning and executes an immutable snapshot once", async function () {
     const parentWindow = usableWindow();
     const original = {

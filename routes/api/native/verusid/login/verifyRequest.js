@@ -20,13 +20,40 @@ module.exports = (api) => {
   };
 
   api.setPost("/native/verusid/login/verify_request", async (req, res, next) => {
-    const { request } = req.body;
+    const { request, capability } = req.body;
+    const loginConsentCaller =
+      req.api_header != null &&
+      req.api_header.builtin === true &&
+      req.api_header.app_id === "VERUS_LOGIN_CONSENT_UI";
+    let verificationClaim = null;
 
     try {
+      // Normal login requests do not receive a provisioning capability. When
+      // one is present, verification also activates that exact window-bound
+      // provisioning session; omitting it can never activate the proxy.
+      if (loginConsentCaller && capability != null) {
+        if (
+          api.loginConsentUi == null ||
+          typeof api.loginConsentUi.beginProvisioningRequestVerification !== "function"
+        ) {
+          throw new Error("Login Consent provisioning authorization is unavailable");
+        }
+        verificationClaim =
+          api.loginConsentUi.beginProvisioningRequestVerification(
+            capability,
+            request
+          );
+      }
+
+      const verification =
+        await api.native.verusid.login.verify_request(request);
+      if (verificationClaim != null && verification.verified === true) {
+        verificationClaim.confirm();
+      }
       res.send(
         JSON.stringify({
           msg: "success",
-          result: await api.native.verusid.login.verify_request(request),
+          result: verification,
         })
       );
     } catch (e) {
@@ -36,6 +63,8 @@ module.exports = (api) => {
           result: e.message,
         })
       );
+    } finally {
+      if (verificationClaim != null) verificationClaim.release();
     }
   });
 

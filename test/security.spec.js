@@ -6,6 +6,10 @@ const path = require("path");
 const blake2b = require("blake2b");
 const CryptoJS = require("crypto-js");
 
+const approvingSensitiveDataService = () => ({
+  execute: async (request, reveal) => ({ status: "ok", result: await reveal(request) }),
+});
+
 const createAuthApi = () => {
   const api = {
     appConfig: { general: { main: {} } },
@@ -117,6 +121,14 @@ describe("security regressions", function () {
         post(route, handler) { wrappedHandler = handler; },
         rpcCalls: { GET: {}, POST: {} },
         log() {},
+        native: {
+          captureStartupSecurityState() {
+            return {
+              chainWriting: false,
+              fingerprint: "a".repeat(64),
+            };
+          },
+        },
       };
       require("../routes/api/auth")(api);
 
@@ -271,7 +283,9 @@ describe("security regressions", function () {
       assert.strictEqual(isAllowedSocketOrigin("http://evil.example", 17775, false), false);
       assert.strictEqual(isAllowedSocketOrigin(undefined, 17775, false), false);
       assert.strictEqual(isAllowedSocketOrigin("http://localhost:3000", 17775, true), true);
-      assert.strictEqual(isAllowedSocketOrigin("http://localhost:3001", 17775, true), false);
+      assert.strictEqual(isAllowedSocketOrigin("http://localhost:3001", 17775, true), true);
+      assert.strictEqual(isAllowedSocketOrigin("http://127.0.0.1:3003", 17775, true), true);
+      assert.strictEqual(isAllowedSocketOrigin("http://localhost:3002", 17775, true), false);
     });
   });
 
@@ -295,10 +309,30 @@ describe("security regressions", function () {
       const devMode = JSON.parse(JSON.stringify(template));
       devMode.general.main.dev = true;
       assert.throws(() => normalizeConfig(devMode, template), /command-line option/);
+      assert.strictEqual(
+        normalizeConfig(devMode, template, { allowDev: true }).general.main.dev,
+        true
+      );
 
       const relativeDataDir = JSON.parse(JSON.stringify(template));
       relativeDataDir.general.native.dataDir = "../../attacker";
       assert.throws(() => normalizeConfig(relativeDataDir, template), /absolute paths/);
+
+      const invalidAuthorizationSetting = JSON.parse(JSON.stringify(template));
+      invalidAuthorizationSetting.general.main.requireNativeAuthForIrreversibleActions = "false";
+      assert.throws(
+        () => normalizeConfig(invalidAuthorizationSetting, template),
+        /must be a boolean/
+      );
+
+      const legacyWithoutAuthorizationSetting = JSON.parse(JSON.stringify(template));
+      delete legacyWithoutAuthorizationSetting.general.main
+        .requireNativeAuthForIrreversibleActions;
+      assert.strictEqual(
+        normalizeConfig(legacyWithoutAuthorizationSetting, template, { stripUnknown: true })
+          .general.main.requireNativeAuthForIrreversibleActions,
+        true
+      );
     });
 
     it("strips retired settings during migration without weakening strict saves", async function () {
@@ -349,19 +383,186 @@ describe("security regressions", function () {
       assert.deepStrictEqual(await fs.readFile(`${configFile}.bak`), originalBytes);
       await fs.remove(temporaryRoot);
     });
+
+    it("loads a persisted dev flag only for an explicitly authorized dev launch", async function () {
+      const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "verus-dev-config-test-"));
+      const configFile = path.join(temporaryRoot, "config.json");
+      const persistedDevConfig = JSON.parse(JSON.stringify(template));
+      persistedDevConfig.general.main.dev = true;
+      await fs.writeJson(configFile, persistedDevConfig);
+
+      const productionApi = {
+        isDevMode: false,
+        paths: { agamaDir: temporaryRoot },
+        log() {},
+        setGet() {},
+        setPost() {},
+      };
+      require("../routes/api/config")(productionApi);
+      assert.throws(() => productionApi.loadLocalConfig(), /command-line option/);
+
+      const developmentApi = {
+        isDevMode: true,
+        paths: { agamaDir: temporaryRoot },
+        log() {},
+        setGet() {},
+        setPost() {},
+      };
+      require("../routes/api/config")(developmentApi);
+      assert.strictEqual(developmentApi.loadLocalConfig().general.main.dev, true);
+      await fs.remove(temporaryRoot);
+    });
+
+    it("enforces native approval at the persistence boundary when verification is disabled", async function () {
+      const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "verus-config-auth-test-"));
+      const currentConfig = JSON.parse(JSON.stringify(template));
+      const disabledConfig = JSON.parse(JSON.stringify(template));
+      disabledConfig.general.main.requireNativeAuthForIrreversibleActions = false;
+      const api = {
+        appConfig: currentConfig,
+        paths: { agamaDir: temporaryRoot },
+        log() {},
+        setGet() {},
+        setPost() {},
+      };
+      require("../routes/api/config")(api);
+
+      assert.throws(
+        () => api.saveLocalAppConf(disabledConfig),
+        /requires fresh native authorization/
+      );
+      assert.strictEqual(await fs.pathExists(path.join(temporaryRoot, "config.json")), false);
+
+      api.saveLocalAppConf(disabledConfig, {
+        status: "approved",
+        scope: "security-setting",
+        actionId: "/config/save:disable-irreversible-authorization",
+        operationId: "one-request-only",
+      });
+      assert.strictEqual(api.isIrreversibleAuthorizationEnabled(), false);
+      assert.strictEqual(
+        (await fs.readJson(path.join(temporaryRoot, "config.json"))).general.main
+          .requireNativeAuthForIrreversibleActions,
+        false
+      );
+
+      // Once the user has deliberately disabled the setting, ordinary saves
+      // that preserve that choice do not cause another security prompt.
+      api.saveLocalAppConf(disabledConfig);
+
+      api.saveLocalAppConf(currentConfig);
+      assert.strictEqual(api.isIrreversibleAuthorizationEnabled(), true);
+      assert.throws(
+        () => api.saveLocalAppConf(disabledConfig, {
+          status: "approved",
+          scope: "security-setting",
+          actionId: "/config/save:disable-irreversible-authorization",
+          operationId: "one-request-only",
+        }),
+        /requires fresh native authorization/
+      );
+      await fs.remove(temporaryRoot);
+    });
   });
 
   describe("native API restrictions", function () {
     const {
+      daemonConfigurationEnablesChainWriting,
+      effectiveStartupEnablesChainWriting,
       hasStartupOption,
       isAllowedRpcMethod,
       isAllowedStartupOption,
       isSafeWalletImportPath,
       isSafeWalletFilename,
       isValidChainTicker,
+      startupOptionsEnableChainWriting,
       validateLaunchConfig,
       validateStartupOptions,
     } = require("../routes/api/native/security");
+
+    it("detects startup options that enable automatic chain writes", function () {
+      for (const options of [
+        ["-gen"],
+        ["--GEN=1"],
+        ["-gen=-1"],
+        ["-gen=1trailing"],
+        ["-gen= 1 trailing"],
+        ["-nogen=0"],
+        ["-nogen=false"],
+        ["-mint"],
+        ["-nomint=0"],
+        ["-migration=1"],
+        ["-nomigration=0"],
+        ["-notary=1"],
+        ["-nonotary=0"],
+        ["-alwayssubmitnotarizations"],
+        ["-noalwayssubmitnotarizations=0"],
+        ["-allowdelayednotarizations=0"],
+        ["-noallowdelayednotarizations"],
+        ["-gen=0", "-mint=1"],
+        ["-gen=0", "-gen=1"],
+        ["-nogen", "-gen=1"],
+      ]) {
+        assert.strictEqual(startupOptionsEnableChainWriting(options), true, options.join(" "));
+      }
+
+      for (const options of [
+        [],
+        ["-gen=0"],
+        ["-gen=false"],
+        ["-gen=true"],
+        ["-nogen"],
+        ["-nogen=1"],
+        ["-nonogen"],
+        ["-nonogen=0"],
+        ["-nononogen=0"],
+        ["-mint=0"],
+        ["-nomint"],
+        ["-migration=0"],
+        ["-nomigration"],
+        ["-notary=0"],
+        ["-noalwayssubmitnotarizations"],
+        ["-allowdelayednotarizations"],
+        ["-noallowdelayednotarizations=0"],
+        ["-genproclimit=8"],
+        ["-mineraddress=RExample"],
+        ["-migrationdestaddress=zsExample"],
+        ["-notaryid=Example@"],
+        ["-gen=1", "-gen=0"],
+        ["-gen=0", "-nogen=0"],
+        ["-nogen=0", "-gen=0"],
+      ]) {
+        assert.strictEqual(startupOptionsEnableChainWriting(options), false, options.join(" "));
+      }
+
+      assert.strictEqual(startupOptionsEnableChainWriting(null), false);
+      assert.strictEqual(startupOptionsEnableChainWriting("-gen"), false);
+    });
+
+    it("detects chain-writing settings in daemon config with command-line precedence", function () {
+      assert.strictEqual(
+        daemonConfigurationEnablesChainWriting("rpcuser=test\nmint=1\n"),
+        true
+      );
+      assert.strictEqual(
+        daemonConfigurationEnablesChainWriting("gen=0\nallowdelayednotarizations=1\n"),
+        false
+      );
+      assert.strictEqual(
+        daemonConfigurationEnablesChainWriting("includeconf=extra.conf\n"),
+        true,
+        "included configuration must fail closed"
+      );
+      assert.strictEqual(
+        effectiveStartupEnablesChainWriting(["-mint=0"], "mint=1\n"),
+        false,
+        "an explicit command-line setting overrides the config file"
+      );
+      assert.strictEqual(
+        effectiveStartupEnablesChainWriting([], "nogen=0\n"),
+        true
+      );
+    });
 
     it("allows read-only RPCs and rejects key export or fund movement", function () {
       assert.strictEqual(isValidChainTicker("VRSC"), true);
@@ -497,6 +698,11 @@ describe("security regressions", function () {
         coinsInitializing: {},
         customKomodoNetworks: {},
         native: { launchConfigs: {} },
+        paths: {
+          vrscDataDir: path.join(os.tmpdir(), "verus-security-test-vrsc"),
+          mineDataDir: path.join(os.tmpdir(), "verus-security-test-mine"),
+          runningDataDir: path.join(os.tmpdir(), "verus-security-test-running"),
+        },
         loadLocalConfig() {},
         log() {},
         saveLocalAppConf() {},
@@ -534,6 +740,23 @@ describe("security regressions", function () {
       );
       assert.strictEqual(typeof activations[0].getOptions, "function");
       assert.throws(() => activations[0].getOptions(), /not allowed/);
+
+      let startupAuthorizationChecks = 0;
+      const assertStartupAuthorization = api.native.assertStartupAuthorization;
+      api.native.assertStartupAuthorization = (...args) => {
+        startupAuthorizationChecks += 1;
+        return assertStartupAuthorization(...args);
+      };
+      api.assertProtectedActionExecutionActive = () => {
+        throw new Error("The protected action request ended before execution completed");
+      };
+      assert.throws(
+        () => activations[0].getOptions(),
+        /request ended before execution completed/
+      );
+      assert.strictEqual(startupAuthorizationChecks, 0);
+      delete api.assertProtectedActionExecutionActive;
+
       assert.throws(
         () => api.native.addCoin(
           "VRSC",
@@ -598,6 +821,107 @@ describe("security regressions", function () {
       );
     });
 
+    it("does not validate or authorize unused options when activation only attaches", async function () {
+      const api = {
+        appConfig: {
+          general: { native: { remindNativeBackup: false } },
+          coin: {
+            native: {
+              dataDir: { VRSC: "" },
+              stakeGuard: {},
+            },
+          },
+        },
+        assetChainPorts: { VRSC: "27486" },
+        assetChainPortsDefault: { VRSC: 27486 },
+        chainParams: { VRSC: {} },
+        coinsInitializing: {},
+        customKomodoNetworks: {},
+        native: { launchConfigs: {} },
+        paths: { vrscDataDir: path.join(os.tmpdir(), "verus-attach-only-vrsc") },
+        loadLocalConfig() {},
+        log() {},
+        saveLocalAppConf() {},
+        setPost() {},
+      };
+      require("../routes/api/native/coins")(api);
+      const launchConfig = {
+        daemon: "verusd",
+        dirNames: {
+          darwin: "Komodo/VRSC",
+          linux: ".komodo/VRSC",
+          win32: "Komodo/VRSC",
+        },
+        startupOptions: [],
+        tags: [],
+      };
+      const unsafeUnusedOptions = ["-walletnotify=echo unsafe"];
+
+      api.checkPort = async (port) => {
+        assert.strictEqual(port, 27486);
+        return "UNAVAILABLE";
+      };
+      const attachState = await api.native.captureActivationSecurityState(
+        "VRSC",
+        launchConfig,
+        unsafeUnusedOptions
+      );
+      assert.strictEqual(attachState.attachOnly, true);
+      assert.strictEqual(attachState.chainWriting, false);
+
+      api.checkPort = async () => "AVAILABLE";
+      await assert.rejects(
+        api.native.captureActivationSecurityState(
+          "VRSC",
+          launchConfig,
+          unsafeUnusedOptions
+        ),
+        /not allowed/
+      );
+    });
+
+    it("normalizes strict decimal RPC ports and rejects ambiguous values", function () {
+      const { normalizeRpcPort, readRpcPort } = require("../routes/api/utils/rpcPort");
+      assert.strictEqual(normalizeRpcPort(27486), 27486);
+      assert.strictEqual(normalizeRpcPort(" 27486 "), 27486);
+      for (const invalid of [0, 65536, "", "27486#comment", "1e3", "0x10", 2.5]) {
+        assert.strictEqual(normalizeRpcPort(invalid), null, String(invalid));
+      }
+      assert.deepStrictEqual(
+        readRpcPort("# rpcport=9999\nrpcport = 12345 # local daemon\n"),
+        { found: true, port: 12345 }
+      );
+      assert.deepStrictEqual(
+        readRpcPort("rpcport=not-a-port\n"),
+        { found: true, port: null }
+      );
+    });
+
+    it("prefers and normalizes a custom daemon-config RPC port", async function () {
+      const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "verus-rpc-port-test-"));
+      const confFile = path.join(temporaryRoot, "VRSC.conf");
+      await fs.writeFile(confFile, "rpcport=12345\nrpcuser=user\nrpcpassword=pass\n");
+      const api = {
+        appConfig: {
+          general: { main: { reservedChains: ["VRSC"] } },
+          coin: { native: { dataDir: { VRSC: "" }, noFastLoad: { VRSC: false } } },
+        },
+        assetChainPorts: { VRSC: 27486 },
+        assetChainPortsDefault: { VRSC: 27486 },
+        log() {},
+        native: { startParams: {} },
+        paths: { vrscDataDir: temporaryRoot },
+        rpcConf: {},
+      };
+      require("../routes/api/daemonControl")(api);
+
+      await api.prepareCoinPort("VRSC", null, null);
+      assert.strictEqual(api.assetChainPorts.VRSC, 12345);
+      assert.strictEqual(typeof api.assetChainPorts.VRSC, "number");
+      assert.strictEqual(api.assetChainPortsDefault.VRSC, 27486);
+      await fs.remove(temporaryRoot);
+    });
+
     it("rejects dangerous restart options before stopping a daemon", async function () {
       const api = {
         appConfig: {
@@ -639,6 +963,114 @@ describe("security regressions", function () {
         /not allowed/
       );
       assert.strictEqual(quitCalls, 0);
+    });
+
+    it("settles and clears initialization state when restart polling fails", async function () {
+      let restartRoute;
+      const api = {
+        appConfig: {
+          general: { native: { remindNativeBackup: false } },
+          coin: { native: { stakeGuard: {} } },
+        },
+        chainParams: { VRSC: {} },
+        coinsInitializing: {},
+        customKomodoNetworks: {},
+        native: { launchConfigs: {} },
+        restartPollIntervalMs: 1,
+        restartPollTimeoutMs: 25,
+        loadLocalConfig() {},
+        log() {},
+        saveLocalAppConf() {},
+        setPost(route, handler) {
+          if (route === "/native/coins/restart") restartRoute = handler;
+        },
+      };
+      require("../routes/api/native/coins")(api);
+      require("../routes/api/native/restart")(api);
+
+      api.quitDaemon = async () => {};
+      api.isDaemonRunning = async () => {
+        throw new Error("daemon status unavailable");
+      };
+
+      const launchConfig = {
+        daemon: "verusd",
+        dirNames: {
+          darwin: "Komodo/VRSC",
+          linux: ".komodo/VRSC",
+          win32: "Komodo/VRSC",
+        },
+        startupOptions: [],
+        tags: [],
+      };
+      let response;
+      await new Promise((resolve) => {
+        restartRoute(
+          {
+            body: { chainTicker: "VRSC", launchConfig, startupOptions: [] },
+            native_authorization: null,
+          },
+          {
+            send(body) {
+              response = JSON.parse(body);
+              resolve();
+            },
+          }
+        );
+      });
+
+      assert.deepStrictEqual(response, {
+        msg: "error",
+        result: "daemon status unavailable",
+        restartState: {
+          stage: "waiting-for-stop",
+          daemonStopInitiated: true,
+        },
+      });
+      assert.strictEqual(api.coinsInitializing.VRSC, undefined);
+    });
+
+    it("times out a hung restart status check without wedging initialization", async function () {
+      const api = {
+        appConfig: {
+          general: { native: { remindNativeBackup: false } },
+          coin: { native: { stakeGuard: {} } },
+        },
+        chainParams: { VRSC: {} },
+        coinsInitializing: {},
+        customKomodoNetworks: {},
+        native: { launchConfigs: {} },
+        restartPollIntervalMs: 1,
+        restartPollTimeoutMs: 5,
+        loadLocalConfig() {},
+        log() {},
+        saveLocalAppConf() {},
+        setPost() {},
+      };
+      require("../routes/api/native/coins")(api);
+      require("../routes/api/native/restart")(api);
+
+      api.quitDaemon = async () => {};
+      api.isDaemonRunning = async () => new Promise(() => {});
+
+      await assert.rejects(
+        api.native.restartCoin(
+          "VRSC",
+          {
+            daemon: "verusd",
+            dirNames: {
+              darwin: "Komodo/VRSC",
+              linux: ".komodo/VRSC",
+              win32: "Komodo/VRSC",
+            },
+            startupOptions: [],
+            tags: [],
+          },
+          []
+        ),
+        /Timed out while checking whether verusd stopped/
+      );
+      assert.strictEqual(api.coinsInitializing.VRSC, undefined);
     });
 
     it("validates startup options only when starting a daemon", async function () {
@@ -792,6 +1224,7 @@ describe("security regressions", function () {
       let decryptHandler;
       const api = {
         paths: { agamaDir: temporaryRoot },
+        sensitiveDataApproval: approvingSensitiveDataService(),
         getNetworkData() { return require("../routes/electrumjs/electrumjs.networks").btc; },
         log() {},
         setPost(route, handler) {
@@ -824,6 +1257,7 @@ describe("security regressions", function () {
       let decryptHandler;
       const api = {
         paths: { agamaDir: temporaryRoot },
+        sensitiveDataApproval: approvingSensitiveDataService(),
         getNetworkData() { return require("../routes/electrumjs/electrumjs.networks").btc; },
         log() {},
         setPost(route, handler) {
@@ -876,6 +1310,7 @@ describe("security regressions", function () {
       let decryptHandler;
       const api = {
         paths: { agamaDir: temporaryRoot },
+        sensitiveDataApproval: approvingSensitiveDataService(),
         getNetworkData() { return require("../routes/electrumjs/electrumjs.networks").btc; },
         log() {},
         setPost(route, handler) {
@@ -1155,6 +1590,7 @@ describe("security regressions", function () {
         getNetworkData() { return networks.btc; },
         log() {},
         paths: { agamaDir: temporaryRoot },
+        sensitiveDataApproval: approvingSensitiveDataService(),
         setPost(route, handler) {
           if (route === "/decryptkey") decryptHandler = handler;
           if (route === "/encryptkey") encryptHandler = handler;

@@ -16,7 +16,10 @@ module.exports = (api) => {
     };
 
     api.appConfigSchema = api._appConfig.schema;
-    api.defaultAppConfig = Object.assign({}, api.appConfig);
+    // Reset means the shipped defaults, not a shallow alias of the user's
+    // startup configuration. A shallow copy could retain a disabled security
+    // setting and later re-disable it without passing through /config/save.
+    api.defaultAppConfig = JSON.parse(JSON.stringify(api._appConfig.config));
     api.kmdMainPassiveMode = false;
 
     api.native.cache.currency_definition_cache = api.create_sub_cache(

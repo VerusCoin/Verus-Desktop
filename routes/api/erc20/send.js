@@ -93,6 +93,9 @@ module.exports = (api) => {
 
     try {
       gasEst = BigInt(await contract.transfer.estimateGas(address, amountBn))
+      if (typeof api.assertProtectedActionExecutionActive === "function") {
+        api.assertProtectedActionExecutionActive();
+      }
       response = await signableContract.transfer(
         address,
         amountBn

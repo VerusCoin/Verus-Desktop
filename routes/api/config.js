@@ -3,15 +3,39 @@ const defaultConf = require('../appConfig.js').config;
 const { normalizeConfig } = require("./utils/configValidation");
 const { atomicWriteFileSync } = require("./utils/atomicFile");
 
-const validateConfigBuffer = (buffer) =>
-  normalizeConfig(JSON.parse(buffer.toString("utf8")), defaultConf, { stripUnknown: true });
+const DISABLE_AUTHORIZATION_ACTION =
+  "/config/save:disable-irreversible-authorization";
+
+const validateConfigBuffer = (buffer, allowDev = false) =>
+  normalizeConfig(JSON.parse(buffer.toString("utf8")), defaultConf, {
+    stripUnknown: true,
+    allowDev,
+  });
 
 module.exports = (api) => {
+  let runtimeIrreversibleAuthorization;
+  const consumedDisableAuthorizationOperations = new Set();
+
+  api.isIrreversibleAuthorizationEnabled = () => {
+    if (typeof runtimeIrreversibleAuthorization === "boolean") {
+      return runtimeIrreversibleAuthorization;
+    }
+    return !(
+      api.appConfig &&
+      api.appConfig.general &&
+      api.appConfig.general.main &&
+      api.appConfig.general.main.requireNativeAuthForIrreversibleActions === false
+    );
+  };
+
   api.loadLocalConfig = () => {
     const configLocation = `${api.paths.agamaDir}/config.json`
     const parseConfigFile = (file) => {
       const savedConfig = JSON.parse(fs.readFileSync(file, 'utf8'));
-      return normalizeConfig(savedConfig, defaultConf, { stripUnknown: true });
+      return normalizeConfig(savedConfig, defaultConf, {
+        stripUnknown: true,
+        allowDev: api.isDevMode === true,
+      });
     };
 
     if (fs.existsSync(configLocation)) {
@@ -46,16 +70,52 @@ module.exports = (api) => {
     return defaultConf
   };
 
-  api.saveLocalAppConf = (appSettings) => {
+  api.saveLocalAppConf = (appSettings, nativeAuthorizationContext = null) => {
     const configFileName = `${api.paths.agamaDir}/config.json`;
-    const validatedSettings = normalizeConfig(appSettings, defaultConf);
+    const allowDev = api.isDevMode === true;
+    const validatedSettings = normalizeConfig(appSettings, defaultConf, { allowDev });
+    const disablesIrreversibleAuthorization =
+      api.isIrreversibleAuthorizationEnabled() !== false &&
+      validatedSettings.general.main.requireNativeAuthForIrreversibleActions === false;
+
+    if (disablesIrreversibleAuthorization) {
+      const validFreshAuthorization =
+        nativeAuthorizationContext &&
+        nativeAuthorizationContext.status === "approved" &&
+        nativeAuthorizationContext.scope === "security-setting" &&
+        nativeAuthorizationContext.actionId === DISABLE_AUTHORIZATION_ACTION &&
+        typeof nativeAuthorizationContext.operationId === "string" &&
+        nativeAuthorizationContext.operationId.length > 0 &&
+        !consumedDisableAuthorizationOperations.has(nativeAuthorizationContext.operationId);
+      if (!validFreshAuthorization) {
+        throw new Error(
+          "Turning off irreversible-action verification requires fresh native authorization"
+        );
+      }
+      consumedDisableAuthorizationOperations.add(nativeAuthorizationContext.operationId);
+    }
 
     try {
       atomicWriteFileSync(configFileName, JSON.stringify(validatedSettings, null, 2), {
         backup: true,
         mode: 0o600,
-        validate: validateConfigBuffer,
+        validate: (buffer) => validateConfigBuffer(buffer, allowDev),
       });
+      runtimeIrreversibleAuthorization =
+        validatedSettings.general.main.requireNativeAuthForIrreversibleActions;
+      if (api.appConfig && api.appConfig.general && api.appConfig.general.main) {
+        api.appConfig = {
+          ...api.appConfig,
+          general: {
+            ...api.appConfig.general,
+            main: {
+              ...api.appConfig.general.main,
+              requireNativeAuthForIrreversibleActions:
+                runtimeIrreversibleAuthorization,
+            },
+          },
+        };
+      }
 
       api.log('config.json write file is done', 'settings');
       api.log(`app config.json file is created successfully at: ${api.paths.agamaDir}`, 'settings');
@@ -95,7 +155,7 @@ module.exports = (api) => {
       res.send(JSON.stringify(retObj));
     } else {
       try {
-        api.saveLocalAppConf(req.body.configObj);
+        api.saveLocalAppConf(req.body.configObj, req.native_authorization);
       } catch(e) {
         res.send(JSON.stringify({
           msg: 'error',

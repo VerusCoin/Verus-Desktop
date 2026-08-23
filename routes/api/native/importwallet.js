@@ -1,4 +1,3 @@
-const { dialog } = require("electron");
 const fs = require("fs-extra");
 const { isSafeWalletImportPath, isValidChainTicker } = require("./security");
 
@@ -15,16 +14,6 @@ module.exports = (api) => {
       if (!isSafeWalletImportPath(filename)) throw new Error("Wallet import path must be absolute");
       const fileStat = await fs.stat(filename);
       if (!fileStat.isFile()) throw new Error("Wallet import path must identify a file");
-      const confirmation = await dialog.showMessageBox({
-        type: "warning",
-        title: "Import Wallet?",
-        message: `Import private keys into ${chain} from this file?\n\n${filename}`,
-        buttons: ["Cancel", "Import"],
-        defaultId: 0,
-        cancelId: 0,
-      });
-      if (confirmation.response !== 1) throw new Error("Wallet import cancelled");
-
       res.send(
         JSON.stringify({
           msg: "success",

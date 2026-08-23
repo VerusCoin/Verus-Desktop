@@ -32,14 +32,43 @@ module.exports = (api) => {
     const {
       chainTicker,
       request,
-      raddress
+      raddress,
+      capability,
     } = req.body;
 
+    const loginConsentCaller =
+      req.api_header != null &&
+      req.api_header.builtin === true &&
+      req.api_header.app_id === "VERUS_LOGIN_CONSENT_UI";
+    let signingClaim = null;
+
     try {
+      if (loginConsentCaller) {
+        if (
+          api.loginConsentUi == null ||
+          typeof api.loginConsentUi.beginProvisioningSigning !== "function"
+        ) {
+          throw new Error("Login Consent provisioning authorization is unavailable");
+        }
+        signingClaim = api.loginConsentUi.beginProvisioningSigning(
+          capability,
+          request,
+          raddress
+        );
+      }
+
+      const signedRequest =
+        await api.native.verusid.provision.sign_id_provisioning_request(
+          chainTicker,
+          request,
+          raddress
+        );
+      if (signingClaim != null) signingClaim.register(signedRequest);
+
       res.send(
         JSON.stringify({
           msg: "success",
-          result: await api.native.verusid.provision.sign_id_provisioning_request(chainTicker, request, raddress),
+          result: signedRequest,
         })
       );
     } catch (e) {
@@ -49,6 +78,8 @@ module.exports = (api) => {
           result: e.message,
         })
       );
+    } finally {
+      if (signingClaim != null) signingClaim.release();
     }
   });
 
