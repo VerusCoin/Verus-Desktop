@@ -249,10 +249,20 @@ describe("security regressions", function () {
 
   describe("local HTTP boundary", function () {
     const {
+      HTTP_SERVER_TIMEOUT_MS,
       isAllowedHostHeader,
       isAllowedSocketOrigin,
       requireJsonPost,
     } = require("../routes/security/http");
+
+    it("keeps native confirmation requests alive for 30 minutes", function () {
+      assert.strictEqual(HTTP_SERVER_TIMEOUT_MS, 30 * 60 * 1000);
+      const mainSource = fs.readFileSync(path.resolve(__dirname, "..", "main.js"), "utf8");
+      assert.match(
+        mainSource,
+        /io\.httpServer\.timeout\s*=\s*HTTP_SERVER_TIMEOUT_MS/
+      );
+    });
 
     it("accepts only exact loopback Host headers on the configured port", function () {
       assert.strictEqual(isAllowedHostHeader("127.0.0.1:17775", 17775), true);

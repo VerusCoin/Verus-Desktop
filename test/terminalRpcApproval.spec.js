@@ -111,12 +111,13 @@ describe("terminal RPC approval service", function () {
       dialog: approvedDialog({
         showMessageBox: async (parent, options) => {
           assert.strictEqual(parent, parentWindow);
-          assert.strictEqual(options.type, "warning");
+          assert.strictEqual(options.type, "none");
           assert.strictEqual(options.defaultId, 0);
           assert.strictEqual(options.cancelId, 0);
-          assert.deepStrictEqual(options.buttons, ["Cancel", "Run Once"]);
-          assert.match(options.message, /can spend or sign funds/i);
-          assert.match(options.message, /personally initiated this exact command/i);
+          assert.deepStrictEqual(options.buttons, ["Cancel", "Run Command"]);
+          assert.match(options.message, /may spend funds/i);
+          assert.match(options.message, /entered this exact command/i);
+          assert.match(options.detail, /nothing to worry about/i);
           assert.match(options.detail, /"chain": "VRSC"/);
           assert.match(options.detail, /"method": "sendcurrency"/);
           assert.match(options.detail, /"amount": 1/);
@@ -197,9 +198,9 @@ describe("terminal RPC approval service", function () {
           showMessageBox: async (parent, options) => {
             assert.strictEqual(parent, parentWindow);
             assert.deepStrictEqual(options.buttons, ["Cancel", "Choose Save Location…"]);
-            assert.match(options.message, /never be shown in the application/i);
-            assert.match(options.message, /file is unencrypted/i);
-            assert.match(options.message, /can spend or sign funds/i);
+            assert.match(options.message, /will not show the result in the application/i);
+            assert.match(options.message, /file will not be encrypted/i);
+            assert.match(options.message, /may spend funds/i);
             assert.doesNotMatch(options.detail, /wallet passphrase value/);
             order.push("approval");
             return { response: 1 };
@@ -260,7 +261,7 @@ describe("terminal RPC approval service", function () {
         dialog: approvedDialog({
           showMessageBox: async (parent, options) => {
             assert.strictEqual(parent, parentWindow);
-            if (options.type === "warning") {
+            if (options.type === "none") {
               order.push("approval");
               return { response: 1 };
             }
@@ -365,7 +366,7 @@ describe("terminal RPC approval service", function () {
         dialog: approvedDialog({
           showMessageBox: async (parent, options) => {
             assert.strictEqual(parent, parentWindow);
-            assert.match(options.message, /can spend or sign funds/i);
+            assert.match(options.message, /may spend funds/i);
             assert.deepStrictEqual(options.buttons, ["Cancel", "Choose Save Location…"]);
             order.push("approval");
             return { response: 1 };

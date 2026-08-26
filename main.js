@@ -30,6 +30,7 @@ if (!hasLock) {
   const bodyParser = require("body-parser");
   const {
     DEVELOPMENT_ORIGINS,
+    HTTP_SERVER_TIMEOUT_MS,
     createDevCorsMiddleware,
     createHostValidationMiddleware,
     isLoopbackAddress,
@@ -222,8 +223,10 @@ if (!hasLock) {
   };
   let io = require("socket.io")(server, socketOptions);
 
-  // Set httpServer timeout to 10 minutes
-  io.httpServer.timeout = 600000;
+  // Native confirmations intentionally remain open while the user reviews
+  // them. Keep the underlying local request alive long enough to read the
+  // details without removing the finite stale-request bound.
+  io.httpServer.timeout = HTTP_SERVER_TIMEOUT_MS;
 
   let mainWindow;
   let appCloseWindow;
@@ -297,6 +300,12 @@ if (!hasLock) {
   api.nativeAuthorization = createNativeAuthorizationService({
     dialog,
     getParentWindow: getNativeAuthorizationParent,
+    authorizationIcon: path.join(
+      __dirname,
+      "assets",
+      "icons",
+      "vrsc_256x256x32.png"
+    ),
     isIrreversibleAuthorizationEnabled: () =>
       typeof api.isIrreversibleAuthorizationEnabled === "function"
         ? api.isIrreversibleAuthorizationEnabled()
