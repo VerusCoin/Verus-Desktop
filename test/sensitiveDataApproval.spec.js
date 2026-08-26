@@ -159,15 +159,17 @@ describe("native sensitive-data approval service", function () {
     assert.strictEqual(executedRequest.address, "RExampleAddress");
     assert.strictEqual(Object.isFrozen(executedRequest), true);
 
-    assert.strictEqual(dialogOptions.type, "warning");
-    assert.strictEqual(dialogOptions.title, "Authorize Private-Key Reveal");
-    assert.deepStrictEqual(dialogOptions.buttons, ["Cancel", "Reveal Once"]);
+    assert.strictEqual(dialogOptions.type, "none");
+    assert.strictEqual(dialogOptions.title, "Confirm Private Key");
+    assert.deepStrictEqual(dialogOptions.buttons, ["Cancel", "Reveal Private Key"]);
     assert.strictEqual(dialogOptions.defaultId, 0);
     assert.strictEqual(dialogOptions.cancelId, 0);
     assert.strictEqual(dialogOptions.noLink, true);
     assert.match(dialogOptions.detail, /Native wallet/);
     assert.match(dialogOptions.detail, /VRSC/);
     assert.match(dialogOptions.detail, /RExampleAddress/);
+    assert.match(dialogOptions.detail, /nothing to worry about/i);
+    assert.match(dialogOptions.detail, /keep the private key safe/i);
     assert.doesNotMatch(JSON.stringify(dialogOptions), new RegExp(secret));
     assert.doesNotMatch(JSON.stringify(auditEvents), new RegExp(secret));
   });
@@ -331,9 +333,10 @@ describe("native sensitive-data approval service", function () {
     }, async () => seed);
 
     assert.deepStrictEqual(outcome, { status: "ok", result: seed });
-    assert.strictEqual(options.title, "Authorize Seed Unlock");
-    assert.deepStrictEqual(options.buttons, ["Cancel", "Unlock Once"]);
+    assert.strictEqual(options.title, "Confirm Profile Unlock");
+    assert.deepStrictEqual(options.buttons, ["Cancel", "Unlock Profile"]);
     assert.match(options.detail, /RProfileIdentifier/);
+    assert.match(options.detail, /nothing to worry about/i);
     assert.doesNotMatch(JSON.stringify(options), new RegExp(password));
     assert.doesNotMatch(JSON.stringify(options), new RegExp(seed));
   });

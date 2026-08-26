@@ -80,7 +80,9 @@ const formatRequestDetail = (request) => {
     return [
       `Profile: ${displayValue(request.profile)}`,
       "",
-      "The decrypted seed controls the Lite wallets in this profile. Approve only if you personally initiated this profile unlock.",
+      "If you entered your password to unlock this profile, this is expected and there is nothing to worry about.",
+      "Unlocking lets Verus Desktop access the Lite wallets in this profile.",
+      "If you did not request this, choose Cancel.",
     ].join("\n");
   }
 
@@ -89,7 +91,9 @@ const formatRequestDetail = (request) => {
   if (request.address) fields.push(`Address: ${displayValue(request.address)}`);
   fields.push(
     "",
-    "Anyone with this private key can control its funds. Approve only if you personally selected Copy Private Key or Reveal Private Key for the details shown above."
+    "This confirmation is a normal safety check. If you chose Copy Private Key or Reveal Private Key for this wallet, there is nothing to worry about.",
+    "Keep the private key safe. Anyone who has it can use the funds in this wallet.",
+    "If you did not request this, choose Cancel."
   );
   return fields.join("\n");
 };
@@ -180,12 +184,12 @@ const createSensitiveDataApprovalService = (dependencies = {}) => {
       const prompt = {
         scope: AUTHORIZATION_SCOPES.SENSITIVE_DATA,
         actionId: `sensitive-data:${request.kind}:${request.source}`,
-        title: request.kind === "seed" ? "Authorize Seed Unlock" : "Authorize Private-Key Reveal",
+        title: request.kind === "seed" ? "Confirm Profile Unlock" : "Confirm Private Key",
         message: request.kind === "seed"
-          ? "Verus Desktop is requesting access to this profile's decrypted seed."
-          : "Verus Desktop is requesting a one-time raw private-key reveal.",
+          ? "Verus Desktop is ready to unlock this profile."
+          : "Verus Desktop is ready to show this private key.",
         detail: formatRequestDetail(request),
-        confirmLabel: request.kind === "seed" ? "Unlock Once" : "Reveal Once",
+        confirmLabel: request.kind === "seed" ? "Unlock Profile" : "Reveal Private Key",
       };
 
       let authorization;

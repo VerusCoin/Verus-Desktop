@@ -1,5 +1,6 @@
 const net = require("net");
 
+const HTTP_SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const DEVELOPMENT_ORIGINS = Object.freeze([
   "http://localhost:3000",
@@ -85,6 +86,7 @@ const isLoopbackAddress = (address) => {
 
 module.exports = {
   DEVELOPMENT_ORIGINS,
+  HTTP_SERVER_TIMEOUT_MS,
   createDevCorsMiddleware,
   createHostValidationMiddleware,
   isAllowedHostHeader,

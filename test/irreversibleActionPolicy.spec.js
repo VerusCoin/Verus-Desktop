@@ -72,7 +72,12 @@ describe("irreversible API authorization policy", function () {
       assert.ok(request, `${route} must produce an authorization request`);
       assert.strictEqual(request.scope, AUTHORIZATION_SCOPES.IRREVERSIBLE_ACTION);
       assert.strictEqual(request.actionId, route);
-      assert.match(request.detail, new RegExp(`API route: ${route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+      assert.match(request.detail, /normal safety check/i);
+      assert.match(request.detail, /nothing to worry about/i);
+      assert.match(request.detail, /Requested by: Verus Desktop/);
+      assert.match(request.detail, /Action:/);
+      assert.match(request.detail, /Details:/);
+      assert.doesNotMatch(request.detail, /Backend|API route|Requesting component/);
     }
 
     for (const route of EXPECTED_ALWAYS_AUTHORIZED_ROUTES) {
@@ -483,7 +488,7 @@ describe("irreversible API authorization policy", function () {
     assert.match(request.detail, /Content hidden from the prompt/);
     assert.match(request.detail, /"sha256": "[0-9a-f]{64}"/);
     assert.match(request.detail, /"chainTicker": "VRSC"/);
-    assert.match(request.detail, /Requesting component: VERUS_DESKTOP_MAIN/);
+    assert.match(request.detail, /Requested by: Verus Desktop/);
   });
 
   it("shows custom Electrum outpoints while redacting the executable WIF", function () {
