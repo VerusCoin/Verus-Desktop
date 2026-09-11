@@ -1,3 +1,4 @@
+const { assertSingleSignatureIdentity } = require("./identityUpdatePolicy");
 
 module.exports = (api) => {
   /**
@@ -22,7 +23,6 @@ module.exports = (api) => {
     privateaddress,
   ) => {
     let idJson = {
-      name: name.split('@')[0].split('.')[0],
       primaryaddresses,
       minimumsignatures,
       contentmap: contentmap,
@@ -44,6 +44,9 @@ module.exports = (api) => {
         )
       .then(idObj => {
         if (!idObj) throw new Error(`${name} ID not found.`)
+        assertSingleSignatureIdentity(idObj.identity);
+        assertSingleSignatureIdentity(idJson);
+        idJson.name = idObj.identity.name
         idJson.parent = idObj.identity.parent
         idJson.identityaddress = idObj.identity.identityaddress
         idJson.version = idObj.identity.version
@@ -72,7 +75,7 @@ module.exports = (api) => {
   };
 
   //TODO: Add more checks in here as well
-  api.native.recover_id_preflight = (
+  api.native.recover_id_preflight = async (
     coin,
     name,
     primaryaddresses,
@@ -82,18 +85,19 @@ module.exports = (api) => {
     recoveryauthority,
     privateaddress,
   ) => {
-    return new Promise((resolve, reject) => {
-      resolve({
-        chainTicker: coin,
-        name: name.split('@')[0].split('.')[0],
-        primaryaddresses,
-        minimumsignatures,
-        contentmap,
-        revocationauthority,
-        recoveryauthority,
-        privateaddress,
-      })
-    });
+    const idObj = await api.native.callDaemon(coin, "getidentity", [name]);
+    assertSingleSignatureIdentity(idObj && idObj.identity);
+    assertSingleSignatureIdentity({ primaryaddresses, minimumsignatures });
+    return {
+      chainTicker: coin,
+      name,
+      primaryaddresses,
+      minimumsignatures,
+      contentmap,
+      revocationauthority,
+      recoveryauthority,
+      privateaddress,
+    };
   };
 
   api.setPost('/native/recover_id', (req, res, next) => {
