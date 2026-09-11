@@ -134,7 +134,7 @@ module.exports = (api) => {
               } else {
                 resolve();
               }
-            });
+            }).catch(reject);
           } else {
             resolve(api.electrumCache[network].tx[txid]);
           }
@@ -154,7 +154,7 @@ module.exports = (api) => {
                 api.electrumCache[network].tx[txid] = _rawtxJSON;
               }
               resolve(api.electrumCache[network].tx[txid]);
-            });
+            }).catch(reject);
           } else {
             resolve(api.electrumCache[network].tx[txid]);
           }

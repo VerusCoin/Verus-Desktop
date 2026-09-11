@@ -2,6 +2,23 @@
 
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
+const bitcoin = require("bitgo-utxo-lib");
+const networks = require("agama-wallet-lib/src/bitcoinjs-networks");
+const decodeTransaction = require("agama-wallet-lib/src/transaction-decoder");
+
+// Unsigned synthetic previous transactions; no wallet keys or network access.
+const previousTransaction = (network = networks.btc, { witness = false, sapling = false } = {}) => {
+  const tx = new bitcoin.Transaction(network);
+  if (sapling) {
+    tx.version = 4;
+    tx.overwintered = 1;
+    tx.versionGroupId = 0x892f2085;
+  }
+  tx.addInput(Buffer.alloc(32, 1), 0);
+  tx.addOutput(Buffer.from("51", "hex"), 100000);
+  if (witness) tx.setWitness(0, [Buffer.from("00", "hex")]);
+  return { txid: tx.getId(), raw: tx.toHex() };
+};
 
 const createApi = () => {
   const routes = new Map();
@@ -10,10 +27,54 @@ const createApi = () => {
     setPost(route, handler, forceEncryption) {
       routes.set(route, { handler, forceEncryption });
     },
+    setGet(route, handler) {
+      routes.set(route, { handler });
+    },
   };
 
   require("../routes/api/electrum/send")(api);
   return { api, routes };
+};
+
+const createInputValidationApi = () => {
+  const fixture = createApi();
+  const { api } = fixture;
+  const previous = previousTransaction();
+  const utxo = {
+    txid: previous.txid,
+    vout: 0,
+    amountSats: 100000,
+    confirmations: 2,
+    verified: true,
+    height: 1,
+    currentHeight: 3,
+  };
+  let privateKeyReads = 0;
+  let broadcasts = 0;
+  api.validateChainTicker = () => "BTC";
+  api.electrum.coinData = { btc: { nspv: false } };
+  api.electrumServers = { btc: { txfee: 1000 } };
+  api.electrumKeys = {
+    btc: {
+      pub: "RSource",
+      get priv() {
+        privateKeyReads += 1;
+        throw new Error("Tests must not reach signing");
+      },
+    },
+  };
+  api.ecl = async () => ({
+    blockchainTransactionBroadcast() {
+      broadcasts += 1;
+      throw new Error("Tests must not reach broadcast");
+    },
+  });
+  api.getTransaction = async () => previous.raw;
+  api.getNetworkData = (chain) => networks[chain.toLowerCase()];
+  api.electrumJSTxDecoder = (raw, chain, network) => decodeTransaction(raw, network);
+  api.electrum.listunspent = async () => [utxo];
+  api.log = () => {};
+  return { ...fixture, previous, utxo, privateKeyReads: () => privateKeyReads, broadcasts: () => broadcasts };
 };
 
 const invokeRoute = (handler, body) =>
@@ -185,9 +246,13 @@ describe("Electrum transaction preflight boundary", function () {
     };
     api.ecl = async () => ({});
     api.log = () => {};
+    const previous = previousTransaction();
+    api.getTransaction = async () => previous.raw;
+    api.getNetworkData = () => networks.btc;
+    api.electrumJSTxDecoder = (raw, chain, network) => decodeTransaction(raw, network);
     api.electrum.listunspent = async () => [
       {
-        txid: "c".repeat(64),
+        txid: previous.txid,
         vout: 0,
         amountSats: 100000,
         confirmations: 2,
@@ -211,5 +276,106 @@ describe("Electrum transaction preflight boundary", function () {
     assert.strictEqual(result.rawTx, undefined);
     assert.strictEqual(result.value, 0.0005);
     assert.strictEqual(result.fee, 0.00001);
+  });
+});
+
+describe("Electrum input amount verification", function () {
+  it("uses real decoded output amounts for BTC, witness and Sapling transactions", async function () {
+    const { api } = createInputValidationApi();
+    for (const [network, options, chain] of [
+      [networks.btc, {}, "BTC"],
+      [networks.btc, { witness: true }, "BTC"],
+      [networks.kmd, { sapling: true }, "KMD"],
+    ]) {
+      const previous = previousTransaction(network, options);
+      api.getTransaction = async () => previous.raw;
+      const [result] = await api.electrum.conditionalListunspent([
+        { txid: previous.txid, vout: 0, amountSats: "100000", confirmations: 2 },
+      ], {}, "RSource", chain, true, true);
+      assert.strictEqual(result.amountSats, 100000);
+      assert.strictEqual(result.amount, 0.001);
+    }
+  });
+
+  for (const custom of [false, true]) {
+    it(`rejects understated ${custom ? "custom" : "server"} amounts before signing or broadcast`, async function () {
+      const fixture = createInputValidationApi();
+      fixture.utxo.amountSats = 90000;
+      const response = await invokeRoute(fixture.routes.get("/electrum/sendtx").handler, {
+        chainTicker: "BTC",
+        toAddress: "RDestination",
+        amount: 0.0005,
+        verify: true,
+        ...(custom ? { customUtxos: [fixture.utxo] } : {}),
+      });
+      assert.strictEqual(response.msg, "error");
+      assert.match(response.result, /amount does not match previous output/);
+      assert.strictEqual(fixture.privateKeyReads(), 0);
+      assert.strictEqual(fixture.broadcasts(), 0);
+    });
+  }
+
+  it("rejects an invalid output index, transaction hash or raw transaction", async function () {
+    for (const mutation of [
+      { vout: -1 }, { vout: 1 }, { vout: 0.5 },
+      { txid: "f".repeat(64) }, { txid: "invalid" },
+      { amountSats: 100001 }, { amountSats: null }, { amountSats: true },
+    ]) {
+      const { api, utxo } = createInputValidationApi();
+      await assert.rejects(api.electrum.conditionalListunspent(
+        [{ ...utxo, ...mutation }], {}, "RSource", "BTC", true, true
+      ), /Invalid|does not match/);
+    }
+    for (const raw of [null, "not-hex", "01", "00".repeat(61)]) {
+      const { api, utxo } = createInputValidationApi();
+      api.getTransaction = async () => raw;
+      await assert.rejects(api.electrum.conditionalListunspent(
+        [utxo], {}, "RSource", "BTC", true, true
+      ));
+    }
+  });
+
+  it("rejects array-like custom inputs before signing or broadcast", async function () {
+    const fixture = createInputValidationApi();
+    const response = await invokeRoute(fixture.routes.get("/electrum/sendtx").handler, {
+      chainTicker: "BTC",
+      toAddress: "RDestination",
+      amount: 0.0005,
+      customUtxos: { 0: { ...fixture.utxo, amountSats: 90000 }, length: 1 },
+    });
+    assert.strictEqual(response.msg, "error");
+    assert.match(response.result, /inputs must be an array/);
+    assert.strictEqual(fixture.privateKeyReads(), 0);
+    assert.strictEqual(fixture.broadcasts(), 0);
+  });
+
+  it("propagates list and previous-transaction failures instead of hanging", async function () {
+    const { api, utxo } = createInputValidationApi();
+    api.electrum.listunspent = async () => { throw new Error("list failed"); };
+    await assert.rejects(api.electrum.txPreflight(
+      "BTC", "RDestination", 0.0005, true, 1000, undefined, true
+    ), /list failed/);
+    api.getTransaction = async () => { throw new Error("previous transaction failed"); };
+    await assert.rejects(api.electrum.conditionalListunspent(
+      [utxo], {}, "RSource", "BTC", true, true
+    ), /previous transaction failed/);
+  });
+
+  it("propagates raw transaction fetch failures through the cache and full UTXO list", async function () {
+    const { api, previous } = createInputValidationApi();
+    api.electrumCache = {};
+    api.dpowCoins = [];
+    api.electrumGetCurrentBlock = async () => 3;
+    require("../routes/api/electrum/cache")(api);
+    require("../routes/api/electrum/listunspent")(api);
+    const ecl = {
+      blockchainAddressListunspent: async () => [
+        { tx_hash: previous.txid, tx_pos: 0, value: 100000, height: 1 },
+      ],
+      blockchainTransactionGet: async () => { throw new Error("fetch failed"); },
+    };
+    await assert.rejects(api.electrum.conditionalListunspent(
+      false, ecl, "RSource", "BTC", true, false
+    ), /fetch failed/);
   });
 });

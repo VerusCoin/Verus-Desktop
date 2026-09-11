@@ -1,5 +1,9 @@
+const { assertSingleSignatureIdentity } = require("./identityUpdatePolicy");
+
 module.exports = (api) => {  
   api.native.setidentitytimelock = async (chain, identity, lock) => {
+    const idObj = await api.native.callDaemon(chain, "getidentity", [identity]);
+    assertSingleSignatureIdentity(idObj && idObj.identity);
     return await api.native.callDaemon(chain, "setidentitytimelock", [identity, lock]);
   }
 

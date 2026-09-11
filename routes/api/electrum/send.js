@@ -58,23 +58,65 @@ module.exports = (api) => {
     };
   };
 
-  api.electrum.conditionalListunspent = (grainedControlUtxos, ecl, address, network, full, verify) => {
-    return new Promise((resolve, reject) => {
-      if (grainedControlUtxos) {
-        resolve(grainedControlUtxos);
-      } else {
-        api.electrum.listunspent(
-          ecl,
-          address,
-          network,
-          true,
-          verify === true ? true : null
-        )
-        .then((utxoList) => {
-          resolve(utxoList);
-        });
+  api.electrum.conditionalListunspent = async (grainedControlUtxos, ecl, address, network, full, verify) => {
+    const utxoList = grainedControlUtxos || await api.electrum.listunspent(
+      ecl,
+      address,
+      network,
+      true,
+      verify === true ? true : null
+    );
+    if (!Array.isArray(utxoList)) {
+      throw new Error("Transaction inputs must be an array");
+    }
+
+    const transactions = new Map();
+    return Promise.all(utxoList.map(async (item) => {
+      if (item == null || typeof item !== "object") {
+        throw new Error("Invalid transaction input");
       }
-    });
+      const utxo = { ...item };
+      // Coin selection below ignores unconfirmed outputs.
+      if (!(utxo.confirmations > 0)) return utxo;
+      if (typeof utxo.txid !== "string" || !/^[0-9a-f]{64}$/i.test(utxo.txid) ||
+          !Number.isInteger(utxo.vout) || utxo.vout < 0) {
+        throw new Error("Invalid previous transaction output");
+      }
+      const amount = Number(utxo.amountSats);
+      if ((typeof utxo.amountSats !== "number" &&
+           !(typeof utxo.amountSats === "string" && /^\d+$/.test(utxo.amountSats))) ||
+          !Number.isSafeInteger(amount) || amount < 0) {
+        throw new Error("Invalid transaction input amount");
+      }
+
+      const txid = utxo.txid.toLowerCase();
+      if (!transactions.has(txid)) {
+        transactions.set(txid, (async () => {
+          const raw = await api.getTransaction(txid, network, ecl);
+          if (typeof raw !== "string" || !/^(?:[0-9a-f]{2})+$/i.test(raw)) {
+            throw new Error("Invalid previous transaction data");
+          }
+          // Decode the actual bytes, not the separately cached decoded object.
+          // Preserve the existing decoder's network-specific transaction IDs.
+          const decoded = api.electrumJSTxDecoder(raw, network, api.getNetworkData(network));
+          if (!decoded || !decoded.format || decoded.format.txid !== txid) {
+            throw new Error("Previous transaction hash does not match input");
+          }
+          return decoded;
+        })());
+      }
+      const decoded = await transactions.get(txid);
+      const output = Array.isArray(decoded.outputs) && decoded.outputs[utxo.vout];
+      if (!output || output.n !== utxo.vout ||
+          !Number.isSafeInteger(output.satoshi) || output.satoshi < 0) {
+        throw new Error("Invalid previous transaction output");
+      }
+      if (amount !== output.satoshi) {
+        throw new Error("Transaction input amount does not match previous output");
+      }
+      // Use authenticated integer amounts for both server and caller-supplied UTXOs.
+      return { ...utxo, amount: fromSats(output.satoshi), amountSats: output.satoshi };
+    }));
   };
 
   api.electrum.txPreflight = async (
