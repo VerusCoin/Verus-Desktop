@@ -328,13 +328,13 @@ const createTerminalRpcApprovalService = (dependencies = {}) => {
 
       const sensitiveOutput = policy.kind === "sensitive-output";
       const highRiskWarning = policy.highRisk
-        ? "\n\nThis command can spend or sign funds, or use wallet authority. Do not approve unless you personally initiated this exact command."
+        ? "\n\nThis command may spend funds, create a signature, or use your wallet's permissions. Continue only if you entered this exact command and the details match what you intended."
         : "";
       const sensitiveWarning = sensitiveOutput
-        ? "\n\nThis command can return private keys, passphrases, viewing keys, decrypted data, or other private material. Its output will never be shown in the application; after approval, you must choose a new .txt file. The file is unencrypted and inherits relevant access controls from the selected filesystem and folder. Anyone who can read it may gain access to private data or funds, so choose a secure local location and never share it."
+        ? "\n\nThis command may return private wallet information. Verus Desktop will not show the result in the application. If you continue, you will choose a new .txt file for it. The file will not be encrypted, so save it in a secure local location and never share it."
         : "";
       const sensitiveFileWarning = policy.sensitiveFileSideEffect === true
-        ? "\n\nThis command tells the daemon to write an unencrypted wallet or private-key file to the destination shown in Parameters. That daemon-written file is not controlled by the native output picker. Verify the destination carefully and never share the file."
+        ? "\n\nThis command saves an unencrypted wallet or private-key file to the location shown in the details. Verus Desktop does not choose or protect that file, so check the location carefully and never share it."
         : "";
 
       let requestForDisplay;
@@ -348,13 +348,15 @@ const createTerminalRpcApprovalService = (dependencies = {}) => {
       const authorizationPrompt = {
         scope: AUTHORIZATION_SCOPES.TERMINAL_RPC,
         actionId: `terminal-rpc:${request.method}`,
-        title: highRiskWarning ? "Confirm Funds or Wallet-Authority Command" : "Confirm Daemon Command",
+        title: highRiskWarning ? "Confirm Advanced Wallet Command" : "Confirm Advanced Command",
         message:
-          `This daemon command is not read-only. Running it once may change wallet or node state.${highRiskWarning}${sensitiveWarning}${sensitiveFileWarning}`,
+          `Verus Desktop is ready to run this advanced command.${highRiskWarning}${sensitiveWarning}${sensitiveFileWarning}`,
         detail:
-          "Review the backend-decoded request below. Secret-valued parameters are redacted in this trusted dialog; the backend will execute the frozen original exactly once.\n\n" +
-          requestForDisplay,
-        confirmLabel: sensitiveOutput ? "Choose Save Location…" : "Run Once",
+          "This confirmation is a normal safety check. If you entered this command and the details below are correct, there is nothing to worry about. Private values are hidden here, and Verus Desktop will run the command exactly once.\n\n" +
+          "Command details:\n" +
+          requestForDisplay +
+          "\n\nIf you did not enter this command, choose Cancel.",
+        confirmLabel: sensitiveOutput ? "Choose Save Location…" : "Run Command",
       };
 
       let authorization;

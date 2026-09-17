@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { describe, it } = require("node:test");
 const {
   AUTHORIZATION_SCOPES,
@@ -36,8 +38,21 @@ const createService = (overrides = {}) => {
 };
 
 describe("central native authorization", function () {
+  it("uses the packaged Verus logo for neutral native confirmations", function () {
+    const root = path.resolve(__dirname, "..");
+    const mainSource = fs.readFileSync(path.join(root, "main.js"), "utf8");
+    const iconPath = path.join(root, "assets", "icons", "vrsc_256x256x32.png");
+
+    assert.strictEqual(fs.existsSync(iconPath), true);
+    assert.match(
+      mainSource,
+      /authorizationIcon:\s*path\.join\([\s\S]{0,160}"vrsc_256x256x32\.png"/
+    );
+  });
+
   it("defaults irreversible-action authorization on and skips it only for literal false", async function () {
     const parentWindow = interactiveWindow();
+    const authorizationIcon = "/trusted/verus-logo.png";
     const dialogs = [];
     const defaultOn = createNativeAuthorizationService({
       dialog: {
@@ -47,6 +62,7 @@ describe("central native authorization", function () {
         },
       },
       getParentWindow: () => parentWindow,
+      authorizationIcon,
       minPromptIntervalMs: 0,
       createOperationId: () => "default-on-operation",
     });
@@ -59,6 +75,8 @@ describe("central native authorization", function () {
     );
     assert.strictEqual(dialogs.length, 1);
     assert.strictEqual(dialogs[0].parent, parentWindow);
+    assert.strictEqual(dialogs[0].options.type, "none");
+    assert.strictEqual(dialogs[0].options.icon, authorizationIcon);
     assert.deepStrictEqual(dialogs[0].options.buttons, ["Cancel", "Authorize Once"]);
     assert.strictEqual(dialogs[0].options.defaultId, 0);
     assert.strictEqual(dialogs[0].options.cancelId, 0);

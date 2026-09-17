@@ -1,8 +1,13 @@
+const { assertSingleSignatureIdentity } = require("./identityUpdatePolicy");
 
 module.exports = (api) => {    
   api.native.revoke_id = (coin, name) => {
     return new Promise((resolve, reject) => {      
-      api.native.callDaemon(coin, 'revokeidentity', [name])
+      api.native.callDaemon(coin, 'getidentity', [name])
+      .then(idObj => {
+        assertSingleSignatureIdentity(idObj && idObj.identity);
+        return api.native.callDaemon(coin, 'revokeidentity', [name]);
+      })
       .then((txid) => {
         resolve({
           name,

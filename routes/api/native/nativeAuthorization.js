@@ -93,6 +93,7 @@ const createNativeAuthorizationService = (dependencies = {}) => {
   const {
     dialog,
     getParentWindow,
+    authorizationIcon,
     isIrreversibleAuthorizationEnabled = () => true,
     createOperationId = () => randomBytes(12).toString("hex"),
     audit = () => {},
@@ -206,10 +207,11 @@ const createNativeAuthorizationService = (dependencies = {}) => {
       let confirmation;
       try {
         confirmation = await dialog.showMessageBox(parentWindow, {
-          type: "warning",
+          type: "none",
           title: request.title,
           message: request.message,
           detail: request.detail,
+          ...(authorizationIcon == null ? {} : { icon: authorizationIcon }),
           buttons: ["Cancel", request.confirmLabel],
           defaultId: 0,
           cancelId: 0,

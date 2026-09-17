@@ -187,7 +187,7 @@ module.exports = (api) => {
 
                                     _resolveObj.verified = verifyMerkleRes;
                                     resolve(_resolveObj);
-                                  });
+                                  }).catch(reject);
                                 } else {
                                   resolve(_resolveObj);
                                 }
@@ -238,14 +238,14 @@ module.exports = (api) => {
 
                                     _resolveObj.verified = verifyMerkleRes;
                                     resolve(_resolveObj);
-                                  });
+                                  }).catch(reject);
                                 } else {
                                   resolve(_resolveObj);
                                 }
                               }
                             }
                           }
-                        });
+                        }).catch(reject);
                       });
                     }))
                     .then(promiseResult => {
@@ -254,17 +254,17 @@ module.exports = (api) => {
                       } else {
                         resolve('decode error');
                       }
-                    });
+                    }).catch(reject);
                   }
                 }
               } else {
                 resolve('cant get current height');
               }
-            });
+            }).catch(reject);
           } else {
             resolve(api.CONNECTION_ERROR_OR_INCOMPLETE_DATA);
           }
-        });
+        }).catch(reject);
       });
     } else {
       return new Promise((resolve, reject) => {
@@ -276,7 +276,7 @@ module.exports = (api) => {
           } else {
             resolve(api.CONNECTION_ERROR_OR_INCOMPLETE_DATA);
           }
-        });
+        }).catch(reject);
       });
     }
   }
@@ -288,7 +288,7 @@ module.exports = (api) => {
 
       if (req.query.full &&
           req.query.full === 'true') {
-        api.electrum.listunspent(
+        return api.electrum.listunspent(
           ecl,
           req.query.address,
           network,
@@ -304,7 +304,7 @@ module.exports = (api) => {
           res.send(JSON.stringify(retObj));
         });
       } else {
-        api.electrum.listunspent(ecl, req.query.address, network)
+        return api.electrum.listunspent(ecl, req.query.address, network)
         .then((listunspent) => {
           const retObj = {
             msg: 'success',
@@ -315,7 +315,9 @@ module.exports = (api) => {
         });
       }
     };
-    _getListunspent();
+    _getListunspent().catch((error) => {
+      res.send(JSON.stringify({ msg: 'error', result: error.message }));
+    });
   });
 
   return api;

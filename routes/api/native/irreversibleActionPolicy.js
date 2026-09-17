@@ -439,15 +439,15 @@ const createPrompt = (
   scope,
   failOnTruncation = true
 ) => {
-  const caller = typeof context.callerAppId === "string" && context.callerAppId.length
-    ? escapeInvisibleCharacters(context.callerAppId).slice(0, 256)
-    : "Unknown built-in component";
+  const caller = context.callerAppId === MAIN_APPLICATION_ID
+    ? "Verus Desktop"
+    : context.callerAppId === LOGIN_CONSENT_APPLICATION_ID
+      ? "Verus Login"
+      : "Verus Desktop";
   const signingOnly = routeSpec.signingOnly === true;
   const message = signingOnly
-    ? "Verus Desktop is ready to create a signature that may exercise wallet or identity authority."
-    : scope === AUTHORIZATION_SCOPES.WALLET_AUTHORITY
-      ? "Verus Desktop is ready to perform a sensitive wallet-authority operation."
-      : "Verus Desktop is ready to perform an irreversible or chain-writing operation.";
+    ? "Verus Desktop is ready to create this signature."
+    : "Verus Desktop is ready to complete this wallet action.";
 
   return Object.freeze({
     scope,
@@ -455,32 +455,34 @@ const createPrompt = (
     ...(typeof context.callerAppId === "string"
       ? { callerAppId: context.callerAppId }
       : {}),
-    title: signingOnly ? "Authorize Wallet Signature" : "Authorize Protected Wallet Action",
+    title: signingOnly ? "Confirm Signature" : "Confirm Wallet Action",
     message,
     detail: [
-      "Approve only if you personally initiated and reviewed this exact action in Verus Desktop.",
+      "This confirmation is a normal safety check. If you started this action and the details below are correct, there is nothing to worry about.",
       "",
-      `Requesting component: ${caller}`,
-      `Backend action: ${routeSpec.label}`,
-      `API route: ${route}`,
+      `Requested by: ${caller}`,
+      `Action: ${routeSpec.label}`,
       "",
-      "Backend-decoded request details:",
+      "Details:",
       formatRouteActionDetails(routeSpec, body, failOnTruncation),
+      "",
+      "If you did not start this action, choose Cancel.",
     ].join("\n"),
-    confirmLabel: "Authorize Once",
+    confirmLabel: signingOnly ? "Create Signature" : "Confirm",
   });
 };
 
 const createSettingDisablePrompt = () => Object.freeze({
   scope: AUTHORIZATION_SCOPES.SECURITY_SETTING,
   actionId: "/config/save:disable-irreversible-authorization",
-  title: "Turn Off Protected-Action Verification?",
-  message: "This change will stop native confirmation prompts for most irreversible wallet actions.",
+  title: "Turn Off Wallet Confirmations?",
+  message: "Verus Desktop is ready to turn off confirmations for most wallet actions.",
   detail:
-    "Seed/private-key reveals, wallet import/export, and privileged built-in terminal commands remain protected. " +
-    "Other sends, identity changes, signatures, staking/mining activation, and chain-writing actions will proceed without a trusted native prompt.\n\n" +
-    "Approve only if you personally changed this setting in General Settings.",
-  confirmLabel: "Turn Off",
+    "If you changed this setting yourself, this confirmation is expected and there is nothing to worry about. " +
+    "After it is turned off, Verus Desktop will no longer ask before most sends and other wallet changes. " +
+    "Confirmations will still appear before showing private keys or seeds, importing or exporting a wallet, and running advanced terminal commands.\n\n" +
+    "If you did not change this setting, choose Cancel.",
+  confirmLabel: "Turn Off Confirmations",
 });
 
 const callerIsAllowed = (routeSpec, context) => {

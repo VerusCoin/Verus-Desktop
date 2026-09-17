@@ -8025,9 +8025,9 @@ verror@^1.10.0:
   version "1.0.0"
   resolved "git+https://github.com/VerusCoin/verus-wallet-endpoints.git#bb461a671c06aa1dcacca813eefb768b0ee7e91e"
 
-"verus_bridgekeeper@git+https://github.com/VerusCoin/verusbridgekeeper.git":
+"verus_bridgekeeper@git+https://github.com/VerusCoin/verusbridgekeeper.git#9084dc3f4fb3263040e808177c92ca70ea63de3a":
   version "1.0.7"
-  resolved "git+https://github.com/VerusCoin/verusbridgekeeper.git#860dbe862780947bafb0b0c23b6f75c923bc9484"
+  resolved "git+https://github.com/VerusCoin/verusbridgekeeper.git#9084dc3f4fb3263040e808177c92ca70ea63de3a"
   dependencies:
     async "^3.2.4"
     axios "0.25.0"

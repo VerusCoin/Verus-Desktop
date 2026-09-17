@@ -22,7 +22,7 @@ const bridgekeeperPackage = JSON.parse(
   fs.readFileSync(path.join(bridgekeeperDirectory, "package.json"), "utf8")
 );
 
-if (bridgekeeperPackage.version !== "1.0.6") {
+if (bridgekeeperPackage.version !== "1.0.7") {
   throw new Error(
     `Refusing to patch unsupported verus_bridgekeeper ${bridgekeeperPackage.version}`
   );
