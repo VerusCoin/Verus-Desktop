@@ -103,18 +103,29 @@
       "!README.md",
       "!make*",
       "!check_submodule.sh",
-      "!gui/EasyDEX/react/node_modules${/*}",
-      "!gui/EasyDEX/react/src${/*}",
-      "!gui/EasyDEX/react/www${/*}"
+      "!gui/Verus-Desktop-GUI/react/src${/*}",
+      "gui/Verus-Desktop-GUI/react/src/translate/coins.js",
+      "!gui/Verus-Desktop-GUI/react/www${/*}",
+      "!gui/Verus-Desktop-GUI/react/__tests__${/*}",
+      "!gui/Verus-Desktop-GUI/react/test${/*}",
+      "!gui/Verus-Desktop-GUI/react/patches${/*}",
+      "!gui/Verus-Desktop-GUI/react/{babel.config.js,build-win.bat,clear-folder.js,image-resize.sh,jest.config.js,protractor.conf.js,webpack.config.js,yarn.lock,README.md}"
     ],
+    "npmRebuild": false,
     "includePdb": false,
     "asar": false,
     "mac": {
       "artifactName": "${productName}-v${version}.${ext}",
       "icon": "assets/icons/agama_icons/vrsc.icns",
       "target": [
-        "dmg"
-      ]
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "x64ArchFiles": "Contents/Resources/app/{assets/bin/osx/**,node_modules/**}"
     },
     "dmg": {
       "icon": "assets/icons/vrsc.icns",
