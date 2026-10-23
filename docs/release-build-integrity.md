@@ -12,6 +12,25 @@ jobs use Docker images addressed by full SHA-256 digest rather than a mutable
 tag. The macOS job runs on the controlled `Ventura` host runner and therefore
 does not have a container image to pin.
 
+Before dependency installation, all security and build jobs source
+`scripts/useBuildNode.sh` to select Node **22.23.4**, satisfying Electron 42's
+Node >=22.12 installation requirement. If that exact version is not already
+active, the helper downloads an official Node archive into a temporary
+directory, checks its hard-coded SHA-256 against the reviewed
+[official checksum list](https://nodejs.org/dist/v22.23.4/SHASUMS256.txt), and
+prepends the extracted runtime to `PATH`. Linux and macOS x64/arm64 hosts are
+supported. The Windows packaging container uses the Linux host runtime.
+Container image digests and the application dependency lockfiles remain the
+other pinned inputs. When changing the build runtime, update its exact version
+and all four archive hashes together.
+
+Use the same toolchain for a local build:
+
+```sh
+source scripts/useBuildNode.sh
+yarn install --frozen-lockfile --non-interactive
+```
+
 To update a built-in application, review the target commit, replace the full
 40-character commit in `scripts/buildBuiltinPlugins.sh`, and confirm that the commit contains a
 tracked `yarn.lock`. `scripts/buildBuiltinPlugins.sh` checks out the commit in a
@@ -38,12 +57,19 @@ All release installs use Yarn's frozen lockfile mode. A missing or stale
 lockfile stops the build instead of silently resolving a new dependency graph.
 This applies to the root application, the GUI submodule, and both cloned
 built-in applications. The built-ins are explicitly built with
-`NODE_ENV=production`. The pinned Node 20 builder jobs enable OpenSSL's legacy
+`NODE_ENV=production`. The pinned Node 22 builder jobs enable OpenSSL's legacy
 provider only for compatibility with the built-ins' reviewed Webpack 4 build.
 
 The pipeline runs the root and renderer security regression suites in a
 dedicated `security` stage. Packaging jobs do not begin unless that stage
 passes.
+
+## Electron runtime
+
+Electron is pinned to **42.11.16** and requires macOS 12 or newer and Windows 10
+or newer. File selection uses Electron's
+`webUtils.getPathForFile` through the existing isolated preload bridge because
+the runtime no longer exposes `File.path`.
 
 ## Artifact checksums
 

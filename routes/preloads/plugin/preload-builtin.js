@@ -1,7 +1,8 @@
 const {
   contextBridge,
   shell,
-  ipcRenderer
+  ipcRenderer,
+  webUtils
 } = require("electron");
 const fs = require('fs')
 const os = require('os')
@@ -19,6 +20,8 @@ let apiShell = {}
 pathsAgama(apiShell, os.platform() === "win32" ? process.env.APPDATA : process.env.HOME)
 
 contextBridge.exposeInMainWorld("bridge", {
+  // Electron 32 removed File.path; resolve only files selected by the renderer.
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   getConfigSync: () =>
     JSON.parse(
       fs.readFileSync(`${apiShell.paths.agamaDir}/config.json`, "utf8")
