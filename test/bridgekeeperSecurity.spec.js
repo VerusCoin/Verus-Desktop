@@ -1,6 +1,7 @@
 const assert = require("assert");
 const { describe, it } = require("node:test");
 const http = require("http");
+const { ROOT_SYSTEM_NAME } = require("../routes/api/utils/constants/dev_options");
 
 describe("Bridgekeeper network boundary", () => {
   it("returns only the public ethnode setting through the Desktop API", async () => {
@@ -29,14 +30,14 @@ describe("Bridgekeeper network boundary", () => {
       };
       require("../routes/api/native/verusbridge/verusbridge")(api);
 
-      assert.deepStrictEqual(await api.native.bridgekeeper_getconf("VRSC"), {
+      assert.deepStrictEqual(await api.native.bridgekeeper_getconf(ROOT_SYSTEM_NAME), {
         ethnode: "https://ethereum.example.invalid/project-id",
       });
       assert.strictEqual(forceEncryption, true);
 
       let response;
       await getConfRoute(
-        { body: { chainTicker: "VRSC" } },
+        { body: { chainTicker: ROOT_SYSTEM_NAME } },
         { send(value) { response = JSON.parse(value); } },
         () => {}
       );
