@@ -76,8 +76,7 @@ the runtime no longer exposes `File.path`.
 Each release job runs `scripts/writeArtifactChecksums.js` after packaging. It
 writes a deterministic GNU-compatible `<artifact>.sha256` sidecar containing
 the SHA-256 of the final AppImage, Windows installer, or DMG. The pipeline
-publishes the installer and checksum sidecar together and also retains the
-sidecar as a GitLab job artifact.
+publishes the installer and checksum sidecar together.
 
 The checksum records the exact bytes produced by CI; it is not an independent
 signature. Consumers still need to obtain it through a trusted release channel.

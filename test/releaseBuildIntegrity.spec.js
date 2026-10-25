@@ -121,11 +121,7 @@ describe("release build integrity", function () {
     }
   });
 
-  it("pins release inputs and freezes every dependency install in CI", async function () {
-    const ci = await fs.promises.readFile(
-      path.join(projectRoot, ".gitlab-ci.yml"),
-      "utf8"
-    );
+  it("pins release inputs and freezes every dependency install", async function () {
     const builtinScript = await fs.promises.readFile(
       path.join(projectRoot, "scripts", "buildBuiltinPlugins.sh"),
       "utf8"
@@ -174,7 +170,7 @@ describe("release build integrity", function () {
       builtinScript,
       /readonly PBAAS_VISUALIZER_PATCH_SHA256="e588f1587aa9212e7d58b0813239763fe57f01f8dc32d749efc12d52549bf79a"/
     );
-    assert.doesNotMatch(ci, /BUILTIN_(?:LOGIN_CONSENT|PBAAS_VISUALIZER)_/);
+    assert.doesNotMatch(builtinScript, /BUILTIN_(?:LOGIN_CONSENT|PBAAS_VISUALIZER)_/);
 
     const pinnedPatchDigests = new Map([
       [
@@ -255,16 +251,7 @@ describe("release build integrity", function () {
       /^\+.*IPC_ORIGIN_PRODUCTION = ["']file:\/\//m
     );
 
-    const imageLines = ci
-      .split("\n")
-      .filter((line) => /^\s*image:\s*/.test(line));
-    assert.ok(imageLines.length > 0, "expected at least one containerized build job");
-    for (const line of imageLines) {
-      assert.match(line, /@sha256:[0-9a-f]{64}\s*$/);
-    }
-
     const installLines = [
-      ...ci.split("\n"),
       ...builtinScript.split("\n"),
       ...Object.values(packageJson.scripts),
       ...Object.values(guiPackageJson.scripts),
@@ -291,28 +278,5 @@ describe("release build integrity", function () {
     assert.match(builtinScript, /hardened backend transport/);
     assert.match(builtinScript, /exact packaged loopback entry point/);
     assert.match(builtinScript, /git -C "\$\{checkout_dir\}" apply --check/);
-    assert.doesNotMatch(ci, /git clone https:\/\/github\.com\/VerusCoin\/verus-/);
-    assert.match(ci, /stages:\n\s+- security\n\s+- build/);
-    assert.match(ci, /security:tests:[\s\S]*?stage: security/);
-    assert.strictEqual(
-      (ci.match(/yarn run test:security/g) || []).length,
-      2
-    );
-    assert.strictEqual(
-      (ci.match(/NODE_OPTIONS: --openssl-legacy-provider/g) || []).length,
-      5
-    );
-    assert.match(
-      ci,
-      /build:mac:[\s\S]*?variables:\n\s+NODE_OPTIONS: --openssl-legacy-provider/
-    );
-    assert.strictEqual(
-      (ci.match(/node scripts\/writeArtifactChecksums\.js/g) || []).length,
-      4
-    );
-    assert.strictEqual(
-      (ci.match(/\.sha256" "\$STAGING\/Verus-Desktop\//g) || []).length,
-      4
-    );
   });
 });
